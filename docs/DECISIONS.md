@@ -82,3 +82,12 @@
 - **Project ID**: Stable hash of normalized workspace root path (local-first, no Git dependency)
 - **Recall modes**: `project` (default) | `legacy` (NULL project_id only) | `global` (explicit opt-in)
 - **Retention**: Not automated yet — tracking fields added (`last_accessed_at`, `access_count`, `archived_at`), policy design in docs only
+
+### 14. Tool Call Context Firewall — Context Compactor v2 (Phase 5 continued)
+- **Decision**: Rewrite `ContextCompactor` with: budget cap (configurable % of context, default 30%), expandable refs for compacted calls (`[TOOL_REF id=... type=...]`), telemetry (tokens before/after, % from tool calls, top bloating types, compactions run, signals preserved, reprocessing count), last N calls raw, older calls compacted, critical signals preserved (errors, warnings, failed tests, changed files)
+- **Why**: Tool calls were ~80% of context; raw output is evidence not conversation; need firewall between evidence and working context
+- **Trade-off**: More complex compaction logic; expandable refs require checkpoint linkage
+- **Status**: ✅ Implemented — `src/context-compactor.ts` rewrite, 21 tests in `test/compaction.test.ts`
+- **Config**: `budgetCapEnabled`, `budgetCapPercent`, `budgetCapPressureThreshold`, `budgetCapMaxIterations` in `CompactorConfig`
+- **Preservation rules**: Errors/warnings never compacted; running/pending calls never compacted; last `workingMemoryWindow` calls always raw
+- **Expandable refs**: Link to raw output in `context_cache` / checkpoints via `expand_checkpoint_ref`

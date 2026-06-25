@@ -20,7 +20,7 @@
 | `src/context-recall.ts` | Builds context brief from relevant memories | `ContextRecall` class, `buildContextBrief()` |
 | `src/priming-engine.ts` | Primes agent with relevant memories at session start | `PrimingEngine` class, `prime()` |
 | `src/subconscious.ts` | Background memory consolidation, distillation | `Subconscious` class |
-| `src/context-compactor.ts` | Compresses tool outputs for context window | `ContextCompactor` class |
+| `src/context-compactor.ts` | Compresses tool outputs for context window. Budget cap, expandable refs, telemetry. | `ContextCompactor` class, `createContextCompactor()` |
 | `src/tool-distiller.ts` | Distills tool activity into structured summaries | `ToolDistiller` class |
 | `src/hooks/auto-docs.ts` | Auto-updates live docs on file edits, flushes on session end. Noise guard: dedup, grouping, ignored paths, caps, config toggle. | `queueDocUpdate()`, `flushDocUpdates()`, `isIgnoredPath()`, `DEFAULT_AUTO_DOCS_CONFIG` |
 | `src/database.ts` | PostgreSQL schema + migrations (project_id, tracking fields) | `migrateProjectIsolation()` |

@@ -410,13 +410,17 @@ export default async (
               content: (m.parts ?? []).map((p) => p.text ?? '').join(' '),
             })),
           );
+          const toolCalls = (output.messages as { parts: { tool?: string }[] }[])
+            .flatMap(m => (m.parts ?? []).filter(p => p.tool === 'tool'));
+          const messagesStr = (output.messages as { parts: { text?: string }[] }[])
+            .flatMap(m => (m.parts ?? []).map(p => p.text ?? ''))
+            .join('\n');
           const result = contextCompactor.compact(
-            output.messages as { parts: unknown[] }[],
-            groups,
-            pressureResult.pressure,
+            toolCalls as ToolCallRecord[],
+            messagesStr
           );
-          toolCompactionResult = result;
-          toolCompactionSaved = result.tokensSaved;
+          toolCompactionResult = result.result;
+          toolCompactionSaved = result.result.tokensSaved;
         }
 
         // ── Layer 3: Assistant text compaction (precision pass) ──

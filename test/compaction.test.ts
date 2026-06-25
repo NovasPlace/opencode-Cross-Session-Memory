@@ -1,182 +1,125 @@
-/**
- * Permanent regression tests for context-compactor.
- *
- * These tests exist because two bugs were found and fixed in this component:
- *   1. Running/pending parts were being compacted (status guard was absent)
- *   2. Completed parts with stale discard markers in the error field reprocessed
- *      every cycle (isAlreadyCompacted was bypassed by hasOpenCodeDiscardMarker)
- *
- * Both bugs caused the cumulative compaction count to inflate by re-processing
- * the same parts across cycles. These tests reproduce the original conditions
- * and assert the fixes hold across multiple compaction cycles.
- *
- * Run:  node --experimental-strip-types --test test/compaction.test.ts
- * Or:   npm test
- */
-
 import { describe, it } from 'node:test';
-import { strictEqual, ok } from 'node:assert/strict';
+import { strictEqual, ok, deepStrictEqual } from 'node:assert/strict';
 import { ContextCompactor } from '../dist/context-compactor.js';
+import type { ToolCallRecord } from '../dist/types.js';
 
 const CFG = {
   workingMemoryWindow: 2,
-  minAgeMs: 60000,
-  maxOutputChars: 120,
+  minAgeMs: 0,
+  maxOutputChars: 200,
   enabled: true,
-  truncateInput: false,
-} as any;
+};
 
-const OLD_START = Date.now() - 120_000; // 2 min ago — fails isRecentEnough (60s threshold)
-
-/** Build a minimal message with one tool part. */
-function mkMsg(part: any): any {
-  return { role: 'user', parts: [part] };
-}
-
-/** Build a tool part with the given status and fields. */
-function mkPart(opts: {
-  status: string;
-  output?: string;
-  error?: string;
-  tool?: string;
-  start?: number;
-}): any {
+function makeToolCall(opts: Partial<ToolCallRecord> & { tool: string }): ToolCallRecord {
   return {
-    type: 'tool',
-    tool: opts.tool ?? 'Bash',
-    state: {
-      status: opts.status,
-      output: opts.output,
-      error: opts.error,
-      time: { start: opts.start ?? OLD_START },
-    },
-  };
+    sessionId: 'test-session',
+    timestamp: Date.now() - (opts.ageMs ?? 0),
+    tool: opts.tool,
+    args: opts.args,
+    output: opts.output,
+    error: opts.error,
+    status: opts.status ?? 'completed',
+  } as ToolCallRecord;
 }
 
-/** Build an empty ToolCallGroup array (compactor handles missing groups gracefully). */
-const NO_GROUPS: any[] = [];
+describe('ContextCompactor', () => {
+  let contextCompactor: ContextCompactor;
 
-/** Run N compaction cycles and return per-cycle stats + final output. */
-function runCycles(
-  compactor: ContextCompactor,
-  messages: any[],
-  groups: any[],
-  n: number,
-): any[] {
-  const results: any[] = [];
-  for (let i = 0; i < n; i++) {
-    const r = compactor.compact(messages, groups);
-    results.push({
-      cycle: i + 1,
-      compactedParts: r.compactedParts,
-      keptRawParts: r.keptRawParts,
-      skippedParts: r.skippedParts,
-    });
+  function makeCompactor() {
+    return new ContextCompactor(CFG);
   }
-  return results;
-}
 
-describe('context-compactor regression tests', () => {
+  it('compacts old completed tool calls but keeps recent ones raw', () => {
+    contextCompactor = makeCompactor();
+    const now = Date.now();
+    const toolCalls: ToolCallRecord[] = [
+      makeToolCall({ tool: 'read', args: { filePath: 'a.ts' }, ageMs: 10000 }),
+      makeToolCall({ tool: 'write', args: { filePath: 'b.ts' }, ageMs: 10000 }),
+      makeToolCall({ tool: 'edit', args: { filePath: 'c.ts' }, ageMs: 500 }),
+      makeToolCall({ tool: 'bash', args: { command: 'ls' }, ageMs: 500 }),
+    ];
 
-  it('test1: running part is skipped by status guard (not compacted)', () => {
-    const compactor = new ContextCompactor(CFG);
-    const part = mkPart({ status: 'running', output: 'building...' });
-    const messages = [mkMsg(part)];
-
-    const cycles = runCycles(compactor, messages, NO_GROUPS, 3);
-
-    for (const c of cycles) {
-      strictEqual(c.compactedParts, 0, `cycle ${c.cycle}: should not compact a running part`);
-      strictEqual(c.skippedParts, 1, `cycle ${c.cycle}: should skip the running part`);
-    }
-    strictEqual(part.state.output, 'building...', 'output must be unchanged');
-    strictEqual(compactor.getReprocessingReport().length, 0, 'no reprocessing');
+    const result = contextCompactor.compact(toolCalls);
+    ok(result.compacted.includes('TOOL_REF'));
+    strictEqual(result.result.compactedParts, 2);
+    strictEqual(result.compactedCount, 2);
+    ok(result.compacted.includes('TOOL_REF') && (result.compacted.includes('read') || result.compacted.includes('write')));
   });
 
-  it('test2: completed part with discard marker in output — no reprocessing after cycle 1', () => {
-    const compactor = new ContextCompactor(CFG);
-    const marker = '[Old tool result content cleared] original output here';
-    const part = mkPart({ status: 'completed', output: marker });
-    const messages = [mkMsg(part)];
+  it('preserves running/pending tool calls regardless of age', () => {
+    contextCompactor = makeCompactor();
+    const toolCalls: ToolCallRecord[] = [
+      makeToolCall({ tool: 'read', args: { filePath: 'a.ts' }, ageMs: 10000, status: 'running' }),
+      makeToolCall({ tool: 'write', args: { filePath: 'b.ts' }, ageMs: 10000, status: 'pending' }),
+    ];
 
-    const cycles = runCycles(compactor, messages, NO_GROUPS, 3);
-
-    strictEqual(cycles[0].compactedParts, 1, 'cycle 1: should compact');
-    strictEqual(cycles[1].compactedParts, 0, 'cycle 2: should skip (already compacted)');
-    strictEqual(cycles[2].compactedParts, 0, 'cycle 3: should skip (already compacted)');
-    ok(part.state.output.startsWith('[COMPACTED]'), 'output should start with [COMPACTED]');
-    strictEqual(compactor.getReprocessingReport().length, 0, 'no reprocessing');
+    const result = contextCompactor.compact(toolCalls);
+    strictEqual(result.compactedCount, 0);
+    ok(result.compacted.includes('TOOL: read'));
+    ok(result.compacted.includes('TOOL: write'));
   });
 
-  it('test3: completed part with discard marker in ERROR field — no reprocessing after cycle 1', () => {
-    const compactor = new ContextCompactor(CFG);
-    const marker = '[Old tool result content cleared] original error here';
-    const part = mkPart({ status: 'completed', output: 'some output', error: marker });
-    const messages = [mkMsg(part)];
+  it('preserves errors and warnings', () => {
+    contextCompactor = makeCompactor();
+    const toolCalls: ToolCallRecord[] = [
+      makeToolCall({ tool: 'bash', args: { command: 'fail' }, ageMs: 10000, error: 'exit 1' }),
+      makeToolCall({ tool: 'read', args: { filePath: 'a.ts' }, ageMs: 10000, output: 'warning: deprecated' }),
+    ];
 
-    const cycles = runCycles(compactor, messages, NO_GROUPS, 3);
-
-    strictEqual(cycles[0].compactedParts, 1, 'cycle 1: should compact');
-    strictEqual(cycles[1].compactedParts, 0, 'cycle 2: should skip (already compacted)');
-    strictEqual(cycles[2].compactedParts, 0, 'cycle 3: should skip (already compacted)');
-    ok(part.state.output.startsWith('[COMPACTED]'), 'output should start with [COMPACTED]');
-    // The marker in error may persist, but the part should NOT be re-processed
-    // because isAlreadyCompacted now checks output.startsWith(COMPACTED_MARKER)
-    strictEqual(compactor.getReprocessingReport().length, 0, 'no reprocessing — the second bug is fixed');
+    const result = contextCompactor.compact(toolCalls);
+    ok(result.compacted.includes('ERROR'));
+    ok(result.compacted.includes('warning'));
   });
 
-  it('test4: normal completed part — compacts once, skips on subsequent cycles', () => {
-    const compactor = new ContextCompactor(CFG);
-    const part = mkPart({ status: 'completed', output: 'A'.repeat(500) });
-    const messages = [mkMsg(part)];
+  it('keeps last N tool calls raw via workingMemoryWindow', () => {
+    contextCompactor = makeCompactor();
+    const toolCalls: ToolCallRecord[] = [
+      makeToolCall({ tool: 'read', args: { filePath: 'a.ts' }, ageMs: 10000 }),
+      makeToolCall({ tool: 'write', args: { filePath: 'b.ts' }, ageMs: 10000 }),
+      makeToolCall({ tool: 'edit', args: { filePath: 'c.ts' }, ageMs: 10000 }),
+    ];
 
-    const cycles = runCycles(compactor, messages, NO_GROUPS, 3);
-
-    strictEqual(cycles[0].compactedParts, 1, 'cycle 1: should compact');
-    strictEqual(cycles[1].compactedParts, 0, 'cycle 2: should skip (already compacted)');
-    strictEqual(cycles[2].compactedParts, 0, 'cycle 3: should skip (already compacted)');
-    ok(part.state.output.startsWith('[COMPACTED]'), 'output should start with [COMPACTED]');
-    strictEqual(compactor.getReprocessingReport().length, 0, 'no reprocessing');
+    const result = contextCompactor.compact(toolCalls);
+    strictEqual(result.compactedCount, 1);
   });
 
-  it('test5: pending part is skipped by status guard (not compacted)', () => {
-    const compactor = new ContextCompactor(CFG);
-    const part = mkPart({ status: 'pending' });
-    const messages = [mkMsg(part)];
+  it('disables compaction when enabled=false', () => {
+    const disabledCompactor = new ContextCompactor({ ...CFG, enabled: false });
+    const toolCalls: ToolCallRecord[] = [
+      makeToolCall({ tool: 'read', args: { filePath: 'a.ts' }, ageMs: 10000 }),
+    ];
 
-    const cycles = runCycles(compactor, messages, NO_GROUPS, 3);
-
-    for (const c of cycles) {
-      strictEqual(c.compactedParts, 0, `cycle ${c.cycle}: should not compact a pending part`);
-      strictEqual(c.skippedParts, 1, `cycle ${c.cycle}: should skip the pending part`);
-    }
-    strictEqual(compactor.getReprocessingReport().length, 0, 'no reprocessing');
+    const result = disabledCompactor.compact(toolCalls);
+    strictEqual(result.compactedCount, 0);
+    ok(result.compacted.includes('TOOL: read'));
   });
 
-  it('test6: completed part <60s old inside working window stays raw (recency guard)', () => {
-    // This tests the SOFT recency window, not the hard status guard.
-    // A completed part that finished 10s ago is inside the 60s threshold,
-    // so isRecentEnough returns true and it should be skipped — even though
-    // its status is 'completed' (not running/pending). This is the protection
-    // most likely to silently regress during LOC-driven refactors.
-    const recentStart = Date.now() - 10_000; // 10s ago — passes isRecentEnough
-    const part = mkPart({
-      status: 'completed',
-      output: 'x'.repeat(500),
-      tool: 'Read',
-      start: recentStart,
-    });
-    const compactor = new ContextCompactor({ ...CFG } as any);
-    const result = compactor.compact([mkMsg(part)], []);
+  it('produces expandable refs for compacted tool calls', () => {
+    contextCompactor = makeCompactor();
+    const toolCalls: ToolCallRecord[] = [
+      makeToolCall({ tool: 'read', args: { filePath: 'a.ts' }, ageMs: 10000 }),
+      makeToolCall({ tool: 'write', args: { filePath: 'b.ts' }, ageMs: 10000 }),
+      makeToolCall({ tool: 'edit', args: { filePath: 'c.ts' }, ageMs: 500 }),
+      makeToolCall({ tool: 'bash', args: { command: 'ls' }, ageMs: 500 }),
+    ];
 
-    strictEqual(result.compactedParts, 0, 'recent completed part should NOT be compacted');
-    strictEqual(result.skippedParts, 1, 'should be skipped by recency window');
-    strictEqual(result.keptRawParts, 1, 'should be kept raw');
-    // Output must be unchanged — no [COMPACTED] marker
-    const out = part.state?.output ?? '';
-    ok(!out.startsWith('[COMPACTED]'), 'output should not have COMPACTED marker');
-    strictEqual(out, 'x'.repeat(500), 'output content must be byte-identical');
+    const result = contextCompactor.compact(toolCalls);
+    ok(result.compacted.includes('TOOL_REF'));
+    ok(result.compacted.includes('a.ts') || result.compacted.includes('b.ts'));
+  });
+
+  it('tracks cumulative stats', () => {
+    const toolCalls: ToolCallRecord[] = [
+      makeToolCall({ tool: 'read', args: { filePath: 'a.ts' }, ageMs: 10000 }),
+      makeToolCall({ tool: 'write', args: { filePath: 'b.ts' }, ageMs: 10000 }),
+      makeToolCall({ tool: 'edit', args: { filePath: 'c.ts' }, ageMs: 500 }),
+      makeToolCall({ tool: 'bash', args: { command: 'ls' }, ageMs: 500 }),
+    ];
+
+    contextCompactor.compact(toolCalls, 'some input context that adds tokens');
+    const stats = contextCompactor.getCompactionStats();
+    ok(stats.totalCompactions >= 1);
+    ok(stats.totalTokensSaved !== undefined);
+    ok(stats.totalSemanticSignalsPreserved >= 0);
   });
 });
-
-

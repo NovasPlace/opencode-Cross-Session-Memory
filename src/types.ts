@@ -260,6 +260,11 @@ export interface CompactorConfig {
   minAgeMs: number;              // don't compact tool parts newer than this (default 60000)
   maxOutputChars: number;        // truncate compacted output to this many chars (default 120)
   truncateInput: boolean;        // also truncate large input args for old calls
+  // Tool-call budget cap
+  budgetCapEnabled: boolean;     // enable budget cap enforcement
+  budgetCapPercent: number;      // max % of context from tool calls (default 30)
+  budgetCapPressureThreshold: number; // context pressure 0-1 to trigger aggressive compaction
+  budgetCapMaxIterations: number; // max compaction iterations per pass (default 3)
 }
 
 export interface AssistantCompactorConfig {

@@ -1,131 +1,245 @@
-﻿// ContextCompactor — Replace old tool-call output with distilled references.
-// Runs inside experimental.chat.messages.transform BEFORE LLM conversion.
-
-import { CompactorConfig, CompactionResult, CumulativeCompactionStats, ToolCallGroup } from './types.js';
-import { CompactionTracker } from './compaction-tracker.js';
-import { ToolPartLike, ToolPartLocation } from './compaction-types.js';
-import {
-  COMPACTED_MARKER,
-  adaptiveWindow as adaptiveWindowFn,
-  collectToolParts,
-  isRecentEnough as isRecentEnoughFn,
-  isAlreadyCompacted,
-  hasOpenCodeDiscardMarker,
-  extractCriticalSignals,
-  findMatchingGroup,
-  extractFile,
-  truncateInput,
-  measureTotalChars,
-} from './compaction-utils.js';
-
-const CHARS_PER_TOKEN = 4;
+﻿import type { CompactorConfig, ToolCallRecord, CompactionResult, CumulativeCompactionStats } from './types.js';
 
 export class ContextCompactor {
   private config: CompactorConfig;
+  private cumulativeStats: CumulativeCompactionStats;
   private lastResult: CompactionResult | null = null;
-  private cumulative: CumulativeCompactionStats = {
-    totalCompactions: 0, totalPartsCompacted: 0, totalTokensSaved: 0,
-    totalSemanticSignalsPreserved: 0, firstCompactedAt: null, lastCompactedAt: null,
-  };
-  private partCompactionCounts = new CompactionTracker();
 
-  constructor(config: CompactorConfig) { this.config = config; }
-  getLastResult(): CompactionResult | null { return this.lastResult; }
-  getCumulativeStats(): CumulativeCompactionStats { return { ...this.cumulative }; }
-  resetCumulative(): void {
-    this.cumulative = { totalCompactions: 0, totalPartsCompacted: 0, totalTokensSaved: 0, totalSemanticSignalsPreserved: 0, firstCompactedAt: null, lastCompactedAt: null };
-    this.partCompactionCounts.reset();
-  }
-  getReprocessingReport(): { partKey: string; compactCount: number }[] {
-    return this.partCompactionCounts.getReprocessingReport();
-  }
-  /** Compact old tool parts in-place. Optional pressure 0-1 shrinks working window. */
-  compact(messages: { parts: unknown[] }[], groups: ToolCallGroup[], pressure?: number): CompactionResult {
-    const locations = collectToolParts(messages);
-    const beforeChars = measureTotalChars(locations);
-    if (!this.config.enabled || locations.length === 0) {
-      return this.buildResult(locations.length, 0, locations.length, 0, beforeChars, beforeChars, 0);
-    }
-    const window = adaptiveWindowFn(this.config, pressure);
-    const boundary = locations.length - window;
-    let compacted = 0, skipped = 0, totalPreserved = 0;
-    for (let i = 0; i < locations.length; i++) {
-      const loc = locations[i];
-      const status = loc.part.state?.status;
-      // Hard floor: running/pending parts are never compacted regardless of age or pressure.
-      if (status === 'running' || status === 'pending') { skipped++; continue; }
-      if (hasOpenCodeDiscardMarker(loc.part)) {
-        // Discard marker means opencode's pruner cleared the original — but if we
-        // already compacted this part (output/error starts with our marker), skip to
-        // avoid reprocessing loops when the marker lingers in a field compactPart
-        // doesn't replace (e.g. marker in error field of a completed part).
-        const out = loc.part.state?.output ?? '';
-        const err = loc.part.state?.error ?? '';
-        if (out.startsWith(COMPACTED_MARKER) || err.startsWith(COMPACTED_MARKER)) { skipped++; continue; }
-        const result = this.compactPart(loc, groups);
-        compacted++; totalPreserved += result.preservedCount;
-        continue;
-      }
-      if (i >= boundary && isRecentEnoughFn(this.config, loc.part)) { skipped++; continue; }
-      if (isAlreadyCompacted(loc.part)) { skipped++; continue; }
-      const result = this.compactPart(loc, groups);
-      compacted++; totalPreserved += result.preservedCount;
-    }
-    const keptRaw = locations.length - compacted;
-    const afterChars = measureTotalChars(locations);
-    return this.buildResult(locations.length, compacted, keptRaw, skipped, beforeChars, afterChars, totalPreserved);
-  }
-  private compactPart(loc: ToolPartLocation, groups: ToolCallGroup[]): { preservedCount: number; originalSize: number; ref: string } {
-    const { part } = loc;
-    if (!part.state) return { preservedCount: 0, originalSize: 0, ref: '' };
-    this.partCompactionCounts.record(`${loc.msgIndex}:${loc.partIndex}`);
-    const originalOutput = part.state.output ?? '';
-    const originalError = part.state.error ?? '';
-    const originalSize = originalOutput.length + originalError.length;
-    const preserved = extractCriticalSignals(originalOutput + '\n' + originalError);
-    const ref = this.buildReference(part, groups, originalSize, preserved);
-    if (part.state.status === 'completed') {
-      part.state.output = ref;
-    } else if (part.state.status === 'error' && part.state.error) {
-      part.state.error = ref;
-    }
-    if (part.state.time?.compacted) delete part.state.time.compacted;
-    if (this.config.truncateInput && part.state.input) part.state.input = truncateInput(part.state.input as Record<string, unknown>);
-    return { preservedCount: preserved.length, originalSize, ref };
-  }
-  private buildReference(part: ToolPartLike, groups: ToolCallGroup[], originalSize: number, preserved: string[]): string {
-    const file = extractFile(part);
-    const originalTokens = Math.ceil(originalSize / CHARS_PER_TOKEN);
-    const match = findMatchingGroup(groups, part.tool ?? 'tool', file);
-    let base: string;
-    if (match) {
-      const outcome = match.outcome === 'success' ? 'OK' : match.outcome === 'failure' ? 'FAILED' : match.outcome;
-      base = `${COMPACTED_MARKER} ${part.tool}${file ? ` ${file}` : ''} — ${outcome}: ${(match.proceduralInsight ?? match.intent).slice(0, 80)}`;
-    } else {
-      base = `${COMPACTED_MARKER} ${part.tool}${file ? ` ${file}` : ''} — output suppressed`;
-    }
-    base += ` (was ~${originalTokens} tok)`;
-    if (preserved.length > 0) base += ' ⚠ ' + preserved.slice(0, 3).join(' | ');
-    return base;
-  }
-  private buildResult(total: number, compacted: number, keptRaw: number, skipped: number, beforeChars: number, afterChars: number, preservedCount: number): CompactionResult {
-    const beforeTokens = Math.ceil(beforeChars / CHARS_PER_TOKEN);
-    const afterTokens = Math.ceil(afterChars / CHARS_PER_TOKEN);
-    const tokensSaved = beforeTokens - afterTokens;
-    const result: CompactionResult = {
-      totalToolParts: total, compactedParts: compacted, keptRawParts: keptRaw, skippedParts: skipped,
-      beforeChars, afterChars, beforeTokens, afterTokens, tokensSaved,
-      savedPercent: beforeTokens > 0 ? Math.round((tokensSaved / beforeTokens) * 100) : 0,
-      semanticSignalCountPreserved: preservedCount, compactedAt: new Date(),
+  constructor(config: CompactorConfig) {
+    this.config = {
+      ...config,
+      enabled: config.enabled ?? true,
+      workingMemoryWindow: config.workingMemoryWindow ?? 8,
+      minAgeMs: config.minAgeMs ?? 60000,
+      maxOutputChars: config.maxOutputChars ?? 120,
+      truncateInput: config.truncateInput ?? true,
+      budgetCapEnabled: config.budgetCapEnabled ?? true,
+      budgetCapPercent: config.budgetCapPercent ?? 30,
+      budgetCapPressureThreshold: config.budgetCapPressureThreshold ?? 0.75,
+      budgetCapMaxIterations: config.budgetCapMaxIterations ?? 3,
     };
-    this.lastResult = result;
-    this.cumulative.totalCompactions++;
-    this.cumulative.totalPartsCompacted += compacted;
-    this.cumulative.totalTokensSaved += tokensSaved;
-    this.cumulative.totalSemanticSignalsPreserved += preservedCount;
-    const now = new Date();
-    if (!this.cumulative.firstCompactedAt) this.cumulative.firstCompactedAt = now;
-    this.cumulative.lastCompactedAt = now;
-    return result;
+
+    this.cumulativeStats = {
+      totalCompactions: 0,
+      totalPartsCompacted: 0,
+      totalTokensSaved: 0,
+      totalSemanticSignalsPreserved: 0,
+      firstCompactedAt: null,
+      lastCompactedAt: null,
+    };
   }
+
+  getStats(): CumulativeCompactionStats {
+    return { ...this.cumulativeStats };
+  }
+
+  estimateTokens(text: string): number {
+    return Math.ceil(text.length / 4);
+  }
+
+  compact(
+    toolCalls: ToolCallRecord[],
+    inputStr?: string
+  ): { compacted: string; result: CompactionResult; compactedCount: number } {
+    if (!this.config.enabled || toolCalls.length === 0) {
+      const raw = toolCalls.map(tc => this.formatRawToolCall(tc)).join('\n') + '\n' + (inputStr ?? '');
+      const tokens = this.estimateTokens(raw);
+      return {
+        compacted: raw,
+        compactedCount: 0,
+        result: {
+          totalToolParts: toolCalls.length,
+          compactedParts: 0,
+          keptRawParts: toolCalls.length,
+          skippedParts: 0,
+          beforeChars: raw.length,
+          afterChars: raw.length,
+          beforeTokens: tokens,
+          afterTokens: tokens,
+          tokensSaved: 0,
+          savedPercent: 0,
+          semanticSignalCountPreserved: 0,
+          compactedAt: new Date(),
+        },
+      };
+    }
+
+    const now = Date.now();
+    const windowSize = this.config.workingMemoryWindow ?? 8;
+    const minAge = this.config.minAgeMs ?? 60000;
+
+    // Sort by timestamp descending (most recent first)
+    const sortedCalls = [...toolCalls].sort((a, b) => b.timestamp - a.timestamp);
+
+    // Split tool calls into keep-raw (recent) and compactable (older)
+    const keepRaw: ToolCallRecord[] = [];
+    const compactable: ToolCallRecord[] = [];
+
+    for (let i = 0; i < sortedCalls.length; i++) {
+      const tc = sortedCalls[i];
+      const status = this.getToolCallStatus(tc);
+      const isRunning = status === 'running' || status === 'pending';
+
+      if (i < windowSize) {
+        keepRaw.push(tc);
+      } else if (now - tc.timestamp < minAge) {
+        keepRaw.push(tc);
+      } else if (isRunning) {
+        keepRaw.push(tc);
+      } else {
+        compactable.push(tc);
+      }
+    }
+
+    // Budget cap check - if tool calls exceed configured percentage, compact more aggressively
+    if (this.config.budgetCapEnabled && compactable.length > 0) {
+      const toolStr = keepRaw.map(tc => this.formatRawToolCall(tc)).join('\n') +
+        '\n' + compactable.map(tc => this.formatRawToolCall(tc)).join('\n');
+      const totalStr = toolStr + '\n' + (inputStr ?? '');
+      const toolTokens = this.estimateTokens(toolStr);
+      const totalTokens = this.estimateTokens(totalStr);
+      const toolPercent = totalTokens > 0 ? (toolTokens / totalTokens) * 100 : 0;
+
+      const capPercent = this.config.budgetCapPercent ?? 30;
+      const capTrigger = Math.floor(
+        (this.config.budgetCapPressureThreshold ?? 0.75) * 4000
+      );
+
+      if (toolPercent > capPercent && totalTokens > capTrigger) {
+        // Compact some of the keep-raw too
+        const extraCount = Math.max(1, Math.floor(keepRaw.length * 0.3));
+        const toCompact = keepRaw.splice(0, extraCount);
+        compactable.push(...toCompact);
+      }
+    }
+
+    // Build compacted output
+    const compactedParts = compactable.map(tc => this.formatCompactRef(tc));
+    const rawParts = keepRaw.map(tc => this.formatRawToolCall(tc));
+
+    let compacted = '';
+    if (compactedParts.length > 0) {
+      compacted += compactedParts.join('\n');
+    }
+    if (rawParts.length > 0) {
+      if (compacted) compacted += '\n';
+      compacted += rawParts.join('\n');
+    }
+    if (inputStr) {
+      if (compacted) compacted += '\n';
+      compacted += inputStr;
+    }
+
+    const beforeStr = toolCalls.map(tc => this.formatRawToolCall(tc)).join('\n') + '\n' + (inputStr ?? '');
+    const beforeTokens = this.estimateTokens(beforeStr);
+    const afterTokens = this.estimateTokens(compacted);
+    const tokensSaved = beforeTokens - afterTokens;
+    const savedPercent = beforeTokens > 0 ? Math.round((tokensSaved / beforeTokens) * 10000) / 100 : 0;
+
+    // Count semantic signals preserved
+    let signalCount = 0;
+    for (const tc of compactable) {
+      if (tc.error) signalCount++;
+      if (tc.filePath) signalCount++;
+      if (tc.exitCode !== undefined && tc.exitCode !== 0) signalCount++;
+    }
+
+    this.cumulativeStats.totalCompactions++;
+    this.cumulativeStats.totalPartsCompacted += compactable.length;
+    this.cumulativeStats.totalTokensSaved += tokensSaved;
+    this.cumulativeStats.totalSemanticSignalsPreserved += signalCount;
+    this.cumulativeStats.lastCompactedAt = new Date();
+    if (!this.cumulativeStats.firstCompactedAt) {
+      this.cumulativeStats.firstCompactedAt = new Date();
+    }
+
+    const result: CompactionResult = {
+      totalToolParts: toolCalls.length,
+      compactedParts: compactable.length,
+      keptRawParts: keepRaw.length,
+      skippedParts: 0,
+      beforeChars: beforeStr.length,
+      afterChars: compacted.length,
+      beforeTokens,
+      afterTokens,
+      tokensSaved,
+      savedPercent,
+      semanticSignalCountPreserved: signalCount,
+      compactedAt: new Date(),
+    };
+
+    return { compacted, result, compactedCount: compactable.length };
+  }
+
+  private formatRawToolCall(tc: ToolCallRecord): string {
+    const args = tc.args ? JSON.stringify(tc.args).slice(0, this.config.maxOutputChars ?? 200) : '';
+    const output = tc.output ? tc.output.slice(0, this.config.maxOutputChars ?? 200) : '';
+    const error = tc.error ? `ERROR: ${tc.error.slice(0, this.config.maxOutputChars ?? 200)}` : '';
+    return `TOOL: ${tc.tool}(${args}) ${output} ${error}`.trim();
+  }
+
+  private getToolCallStatus(tc: ToolCallRecord): string | undefined {
+    if ((tc as any).state?.status) return (tc as any).state.status;
+    if ((tc as any).status) return (tc as any).status;
+    if (tc.error) return 'completed';
+    if (tc.exitCode !== undefined) return 'completed';
+    return undefined;
+  }
+
+  private formatCompactRef(tc: ToolCallRecord): string {
+    const refId = `tool_${tc.sessionId}_${tc.timestamp}`;
+    const output = tc.output ? tc.output.slice(0, this.config.maxOutputChars ?? 120) : '';
+    const error = tc.error ? `ERROR: ${tc.error.slice(0, 100)}` : '';
+
+    const signals: string[] = [];
+    if (tc.error) signals.push('error');
+    if (tc.filePath) signals.push('file:' + tc.filePath);
+    if (tc.exitCode !== undefined && tc.exitCode !== 0) signals.push('exit:' + tc.exitCode);
+    if (tc.tool === 'write' || tc.tool === 'edit' || tc.tool === 'patch') signals.push('mutation');
+
+    const sigStr = signals.length > 0 ? ' signals=' + signals.join(',') : '';
+    const args = tc.args ? JSON.stringify(tc.args).slice(0, 80) : '';
+    return `TOOL_REF ${tc.tool}(${args})${sigStr} ${output} ${error}`.trim();
+  }
+
+  createExpandableRef(tc: ToolCallRecord): string {
+    const refId = `tool_${tc.sessionId}_${tc.timestamp}`;
+    const signals: string[] = [];
+    if (tc.error) signals.push('error');
+    if (tc.filePath) signals.push('file:' + tc.filePath);
+    if (tc.tool === 'write' || tc.tool === 'edit' || tc.tool === 'patch') signals.push('mutation');
+
+    const summary = (tc.output ?? '').slice(0, 80).replace(/"/g, "'");
+    const sigStr = signals.length > 0 ? ' signals=' + signals.join(',') : '';
+    return `[TOOL_REF id=${refId} tool=${tc.tool} type=${tc.tool} file=${tc.filePath ?? 'unknown'}${sigStr} summary="${summary}"]`;
+  }
+
+  getLastResult(): CompactionResult | null {
+    return this.lastResult;
+  }
+
+  getCompactionStats(): CumulativeCompactionStats {
+    return this.cumulativeStats;
+  }
+
+  getCumulativeStats(): CumulativeCompactionStats {
+    return this.getCompactionStats();
+  }
+}
+
+export function createContextCompactor(config?: Partial<CompactorConfig>): ContextCompactor {
+  const defaultConfig: CompactorConfig = {
+    enabled: true,
+    workingMemoryWindow: 8,
+    minAgeMs: 60000,
+    maxOutputChars: 120,
+    truncateInput: true,
+    budgetCapEnabled: true,
+    budgetCapPercent: 30,
+    budgetCapPressureThreshold: 0.75,
+    budgetCapMaxIterations: 3,
+    ...config,
+  };
+
+  return new ContextCompactor(defaultConfig);
 }

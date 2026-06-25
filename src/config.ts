@@ -59,6 +59,10 @@ export const DEFAULT_CONFIG: PluginConfig = {
     minAgeMs: 60000,
     maxOutputChars: 120,
     truncateInput: true,
+    budgetCapEnabled: true,
+    budgetCapPercent: 30,
+    budgetCapPressureThreshold: 0.7,
+    budgetCapMaxIterations: 3,
   },
   assistantCompactor: {
     enabled: true,
