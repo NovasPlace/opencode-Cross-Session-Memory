@@ -1,0 +1,60 @@
+/**
+ * Shared context type for all hook modules.
+ * Passed to each extracted hook so they can access shared state
+ * without capturing closure variables from index.ts.
+ */
+import type { PluginConfig } from './types.js';
+import type { Database } from './database.js';
+import type { MemoryManager } from './memory-manager.js';
+import type { ContextRecallDaemon } from './context-recall.js';
+import type { ContextPressure } from './context-pressure.js';
+import type { ContextCompactor } from './context-compactor.js';
+import type { ToolCallDistiller } from './tool-distiller.js';
+import type { LoopDetector } from './loop-detector.js';
+import type { SubconsciousWatcher } from './subconscious.js';
+import type { GitWatcher } from './git-watcher.js';
+import type { MemoryExtractor } from './memory-extractor.js';
+import type { PrimingEngine } from './priming-engine.js';
+import type { CheckpointStore } from './checkpoint-store.js';
+import type { CheckpointToolDeps } from './checkpoint-tool.js';
+import type { CheckpointInjectDeps } from './checkpoint-inject.js';
+import type { AutoCheckpointTrigger } from './helpers/auto-checkpoint.js';
+import type { CompileResult } from './context-compiler.js';
+
+export type AutoCheckpointFn = (
+  sessionId: string,
+  trigger: AutoCheckpointTrigger,
+  details?: Record<string, unknown>,
+) => Promise<void>;
+
+export interface PluginState {
+  currentSessionId: string | null;
+  messageCount: number;
+  capturedMessageSizes: Map<string, number>;
+}
+
+export interface PluginContext {
+  config: PluginConfig;
+  database: Database;
+  client: any;
+  directory: string;
+  worktree?: string;
+  memoryManager: MemoryManager;
+  contextRecall: ContextRecallDaemon;
+  contextPressure: ContextPressure;
+  contextCompactor: ContextCompactor;
+  toolDistiller: ToolCallDistiller;
+  loopDetector: LoopDetector;
+  subconscious: SubconsciousWatcher;
+  gitWatcher: GitWatcher;
+  memoryExtractor: MemoryExtractor;
+  primingEngine: PrimingEngine;
+  checkpointStore: CheckpointStore;
+  checkpointToolDeps: CheckpointToolDeps;
+  checkpointInjectDeps: CheckpointInjectDeps;
+  autoCheckpoint: AutoCheckpointFn;
+  refreshActiveContext: (sessionId: string) => Promise<void>;
+  syncActiveSession: (sessionId: string) => void;
+  lastCompileResult: CompileResult | null;
+  state: PluginState;
+}

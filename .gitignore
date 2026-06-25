@@ -1,0 +1,14 @@
+node_modules
+dist
+*.log
+.env
+*.db
+*.sqlite
+*.sqlite3
+*.swp
+*.swo
+*~
+.DS_Store
+coverage
+*.tsbuildinfo
+.opencode

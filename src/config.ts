@@ -1,0 +1,104 @@
+import { PluginConfig } from './types.js';
+import { DEFAULT_ROLLOVER_CONFIG } from './context-rollover-config.js';
+
+// Default configuration for the Cross-Session Memory Plugin
+export const DEFAULT_CONFIG: PluginConfig = {
+  databaseUrl: 'postgresql://opencode_memory:opencode_memory@localhost:5432/opencode_memory',
+  embeddingModel: 'text-embedding-3-small',
+  maxMemoriesPerRecall: 10,
+  importanceThreshold: 0.3,
+  autoStoreConversations: true,
+  fullTranscripts: true,
+  contextRecallInterval: 90,
+  subconsciousWatchInterval: 30,
+  gitPollInterval: 60,
+  contextPressureRecommend: 0.65,
+  contextPressureDemand: 0.85,
+  loopDetectionThreshold: 3,
+  logToolUsage: false,
+  logCommands: false,
+  logSessionLifecycle: false,
+  filterBuildArtifacts: true,
+  extractor: {
+    enabled: true,
+    minTurnsBeforeExtract: 3,
+    maxCandidatesPerTurn: 5,
+    confidenceThreshold: 0.7,
+    autoApproveThreshold: 0.9,
+  },
+  ttl: {
+    enabled: true,
+    defaultDays: 90,
+    byType: {
+      'conversation': 60,
+      'workspace': 30,
+      'repo': 45,
+      'preference': 180,
+      'lesson': 365,
+      'episodic': 7,
+      'procedural': 30,
+    },
+    byImportance: [
+      { min: 0, max: 0.3, days: 180 },
+      { min: 0.3, max: 0.6, days: 90 },
+      { min: 0.6, max: 1.0, days: 30 },
+    ],
+    gracePeriodDays: 7,
+  },
+  distiller: {
+    enabled: true,
+    groupWindowMs: 30000,
+    maxSummaryLength: 200,
+    maxContextSummaries: 10,
+    minCallsForGroup: 2,
+    autoSaveAsMemory: true,
+  },
+  compactor: {
+    enabled: true,
+    workingMemoryWindow: 8,
+    minAgeMs: 60000,
+    maxOutputChars: 120,
+    truncateInput: true,
+  },
+  assistantCompactor: {
+    enabled: true,
+    workingAssistantWindow: 2,
+    minTokens: 800,
+    maxOutputChars: 600,
+  },
+  checkpoint: {
+    enabled: true,
+    maxCheckpointInjectTokens: 1200,
+    minMessagesBeforeInject: 10,
+    maxRawCapturesPerCheckpoint: 50,
+    maxRawCaptureBytes: 4096,
+    auto: {
+      enabled: true,
+      contextPressureThreshold: 0.8,
+      messageCountThreshold: 50,
+      riskyEditToolPatterns: ['write', 'edit', 'delete', 'patch'],
+    },
+  },
+  contextCompiler: {
+    enabled: true,
+    modes: { cheap: 35000, normal: 50000, deep: 75000 },
+    defaultMode: 'normal',
+    recentTurnWindow: 3,
+    // Layer 1: status line injection (telemetry only, no instructions)
+    statusInjection: true,
+    statusPlacement: 'end',
+    statusVerbosity: 'compact',
+    // Layer 3: compilation log retention
+    logEnabled: true,
+    logSummaryRetentionDays: null,  // keep stats forever
+    logDetailsRetentionDays: 60,    // prune JSONB details after 60 days
+    storeRawCompressedContent: false,
+  },
+  contextCache: {
+    enabled: true,
+    minTokensToCache: 200,
+    manifestMaxTokens: 2000,
+    retentionDays: 30,
+  },
+  contextRollover: DEFAULT_ROLLOVER_CONFIG,
+};
