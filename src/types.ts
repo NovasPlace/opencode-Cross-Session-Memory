@@ -4,6 +4,7 @@
 import type { CheckpointConfig } from './checkpoint-types.js';
 import type { RolloverConfig } from './context-rollover-config.js';
 import type { ExtractedConcept } from './concept-extractor.js';
+import type { RedactorConfig } from './redactor.js';
 
 export type MemoryType =
   | 'conversation' // Key decisions, problems solved, user preferences
@@ -307,6 +308,8 @@ export interface PluginConfig {
   contextRollover: RolloverConfig;
   // Phase 3 — Auto-docs noise guard
   autoDocs: AutoDocsConfig;
+  // Phase 18 — Privacy/redaction layer
+  redactor: RedactorConfig;
 }
 
 export interface CompactorConfig {

@@ -4,6 +4,7 @@ import type {
   GapReport, Blueprint,
 } from './types.js';
 import { estimateTokens } from './token-bucket-analyzer.js';
+import type { Redactor } from './redactor.js';
 
 export const DEFAULT_ALCHEMIST_CONFIG: AlchemistConfig = {
   organismManifest: [],
@@ -83,9 +84,11 @@ export class AlchemistEngine {
   private lessons: Map<string, AlchemistLesson> = new Map();
   private capabilities: Map<string, ExtractedCapability> = new Map();
   private config: AlchemistConfig;
+  redactor?: Redactor;
 
-  constructor(config: Partial<AlchemistConfig> = {}) {
+  constructor(config: Partial<AlchemistConfig> = {}, redactor?: Redactor) {
     this.config = { ...DEFAULT_ALCHEMIST_CONFIG, ...config };
+    this.redactor = redactor;
   }
 
   ingest(raw: AlchemistIngest[]): ExtractedCapability[] {
@@ -243,10 +246,10 @@ export class AlchemistEngine {
         id,
         type: l.type ?? DEFAULT_TYPE,
         title: l.title ?? 'Stored lesson',
-        description: l.description ?? '',
-        trigger: l.trigger ?? '',
-        action: l.action ?? '',
-        evidence: l.evidence ?? [],
+        description: this.redactLessonText(l.description ?? ''),
+        trigger: this.redactLessonText(l.trigger ?? ''),
+        action: this.redactLessonText(l.action ?? ''),
+        evidence: (l.evidence ?? []).map(e => this.redactLessonText(e)),
         source: l.source ?? DEFAULT_SOURCE,
         verified: l.verified ?? false,
         verificationCount: l.verificationCount ?? 0,
@@ -313,10 +316,10 @@ export class AlchemistEngine {
       id,
       type,
       title: matched?.trigger ?? `${type}: ${cap.name}`,
-      description: cap.evidence,
-      trigger: matched?.trigger ?? cap.evidence.slice(0, 100),
-      action: matched?.action ?? `Review and address: ${cap.name}`,
-      evidence: [cap.evidence],
+      description: this.redactLessonText(cap.evidence),
+      trigger: this.redactLessonText(matched?.trigger ?? cap.evidence.slice(0, 100)),
+      action: this.redactLessonText(matched?.action ?? `Review and address: ${cap.name}`),
+      evidence: [this.redactLessonText(cap.evidence)],
       source,
       verified: false,
       verificationCount: 0,
@@ -341,5 +344,10 @@ export class AlchemistEngine {
 
   private findLineNumber(content: string, index: number): number {
     return content.slice(0, index).split('\n').length;
+  }
+
+  private redactLessonText(text: string): string {
+    if (!this.redactor) return text;
+    return this.redactor.redact(text).text;
   }
 }

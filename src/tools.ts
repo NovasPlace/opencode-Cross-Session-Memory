@@ -10,6 +10,7 @@ import { MemoryExtractor } from './memory-extractor.js';
 import { ToolCallDistiller } from './tool-distiller.js';
 import { ContextCompactor } from './context-compactor.js';
 import { Database } from './database.js';
+import type { Redactor } from './redactor.js';
 
 /**
  * memory_save - Save information to cross-session memory
@@ -540,6 +541,7 @@ export function memoryDistillTool(
   distiller: ToolCallDistiller,
   database: Database,
   extractor: MemoryExtractor,
+  redactor?: Redactor,
 ) {
   return tool({
     description:
@@ -560,14 +562,21 @@ export function memoryDistillTool(
 
       if (shouldPersist && context.sessionID && summary.groups.length > 0) {
         const pool = database.getPool();
+        const groupsJson = JSON.stringify(summary.groups);
+        const compressedText = redactor
+          ? redactor.redact(summary.compressed).text
+          : summary.compressed;
+        const groupsText = redactor
+          ? redactor.redact(groupsJson).text
+          : groupsJson;
         await pool.query(
           `INSERT INTO distilled_summaries (id, session_id, groups, compressed, total_calls_summarized)
            VALUES ($1, $2, $3, $4, $5)`,
           [
             summary.id,
             context.sessionID,
-            JSON.stringify(summary.groups),
-            summary.compressed,
+            groupsText,
+            compressedText,
             summary.totalCallsSummarized,
           ],
         );

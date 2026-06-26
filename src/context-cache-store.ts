@@ -6,6 +6,7 @@
  * manifest entries and retrieved on demand via context_fetch / context_search.
  */
 import { DatabasePool } from './types.js';
+import { Redactor } from './redactor.js';
 
 export type CacheKind = 'turn' | 'tool_output' | 'file_read' | 'error' | 'decision';
 
@@ -26,7 +27,12 @@ export interface CacheItem extends CacheItemInput {
   fetchCount: number;
 }
 
-export async function storeItem(pool: DatabasePool, item: CacheItemInput): Promise<void> {
+export async function storeItem(
+  pool: DatabasePool, item: CacheItemInput, redactor?: Redactor,
+): Promise<void> {
+  // Phase 18 — Redact before persistence
+  const summary = redactor ? redactor.redact(item.summary).text : item.summary;
+  const content = redactor ? redactor.redact(item.content).text : item.content;
   await pool.query(
     `INSERT INTO context_cache
        (session_id, display_id, kind, created_at, message_index, summary, content, metadata, tokens)
@@ -34,7 +40,7 @@ export async function storeItem(pool: DatabasePool, item: CacheItemInput): Promi
      ON CONFLICT (session_id, display_id) DO NOTHING`,
     [
       item.sessionId, item.displayId, item.kind, item.createdAt,
-      item.messageIndex ?? null, item.summary, item.content,
+      item.messageIndex ?? null, summary, content,
       JSON.stringify(item.metadata ?? {}), item.tokens ?? null,
     ],
   );

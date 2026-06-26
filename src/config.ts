@@ -113,4 +113,16 @@ export const DEFAULT_CONFIG: PluginConfig = {
     deduplicateEdits: true,
     groupMultipleEdits: true,
   },
+  redactor: {
+    enabled: true,
+    categories: {
+      secret: true,
+      email: true,
+      phone: true,
+      ip: true,
+      urlCreds: true,
+      path: 'normalize' as const,
+    },
+    workspaceRoot: undefined,
+  },
 };

@@ -5,6 +5,7 @@ import {
   CheckpointRecord, CreateCheckpointInput, StoreRawInput,
   RawCaptureRecord, ExpandedRef, CompactedRef,
 } from './checkpoint-types.js';
+import type { Redactor } from './redactor.js';
 
 /** Maps a pg row to a CheckpointRecord (JSONB/TEXT[] auto-parsed by node-postgres). */
 function rowToCheckpoint(row: any): CheckpointRecord {
@@ -46,13 +47,23 @@ function rowToRawCapture(row: any): RawCaptureRecord {
 
 /** CRUD for durable checkpoints. All inputs parameterized. */
 export class CheckpointStore {
-  constructor(private readonly pool: DatabasePool) {}
+  redactor?: Redactor;
+  constructor(private readonly pool: DatabasePool, redactor?: Redactor) {
+    this.redactor = redactor;
+  }
 
   /**
    * Atomically: deactivate prior active checkpoints in the session, then insert
    * the new checkpoint with is_active=true and its raw captures. One transaction.
    */
   async createCheckpoint(input: CreateCheckpointInput): Promise<CheckpointRecord> {
+    // Phase 18 — Redact before persistence
+    const summaryMarkdown = this.redactor
+      ? this.redactor.redact(input.summaryMarkdown).text
+      : input.summaryMarkdown;
+    const rawCaptures = this.redactor
+      ? input.rawCaptures.map(rc => ({ ...rc, content: this.redactor!.redact(rc.content).text }))
+      : input.rawCaptures;
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -76,7 +87,7 @@ export class CheckpointStore {
         [
           input.sessionId, input.projectId ?? null,
           input.sourceMessageStart ?? null, input.sourceMessageEnd ?? null,
-          input.summaryMarkdown, input.summaryTokens, input.inputTokensEstimate,
+          summaryMarkdown, input.summaryTokens, input.inputTokensEstimate,
           JSON.stringify(input.sourceRefs), JSON.stringify(input.compactedRefs),
           input.filesMentioned, input.testsMentioned,
           JSON.stringify(input.risks), JSON.stringify(input.nextSteps), prevId,
@@ -84,7 +95,7 @@ export class CheckpointStore {
       );
       const checkpoint = rowToCheckpoint(ins.rows[0]);
       // Insert raw captures
-      for (const rc of input.rawCaptures) {
+      for (const rc of rawCaptures) {
         await client.query(
           `INSERT INTO checkpoint_raw_captures
              (checkpoint_id, message_id, part_id, tool_call_id, kind, content, token_count)

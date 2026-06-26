@@ -10,6 +10,7 @@
 import { DatabasePool } from './types.js';
 import { storeItem, CacheKind } from './context-cache-store.js';
 import { estimateTokens } from './token-bucket-analyzer.js';
+import type { Redactor } from './redactor.js';
 
 export interface CacheRuntimeConfig {
   recentTurnWindow: number;
@@ -68,6 +69,7 @@ export async function cacheOldContext(
   sessionId: string,
   messages: { info?: { role?: string }; parts?: any[] }[],
   cfg: CacheRuntimeConfig,
+  redactor?: Redactor,
 ): Promise<CacheRuntimeResult> {
   const total = messages.length;
   let itemsCached = 0;
@@ -99,7 +101,7 @@ export async function cacheOldContext(
           metadata: extracted.metadata,
           tokens,
           messageIndex: i,
-        });
+        }, redactor);
       } catch (e) {
         continue;
       }

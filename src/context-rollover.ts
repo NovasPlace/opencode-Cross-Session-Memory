@@ -8,6 +8,7 @@
  */
 import { DatabasePool } from './types.js';
 import { RolloverConfig } from './context-rollover-config.js';
+import type { Redactor } from './redactor.js';
 import { estimateTokens } from './token-bucket-analyzer.js';
 import { storeItem } from './context-cache-store.js';
 import { buildContinuationBrief } from './context-rollover-brief.js';
@@ -80,6 +81,7 @@ async function archiveOldMessages(
   pool: DatabasePool,
   sessionId: string,
   messages: MessageLike[],
+  redactor?: Redactor,
 ): Promise<number> {
   let archivedTokens = 0;
   for (let i = 0; i < messages.length; i++) {
@@ -98,7 +100,7 @@ async function archiveOldMessages(
       summary,
       content: text,
       tokens,
-    });
+    }, redactor);
     archivedTokens += tokens;
   }
   return archivedTokens;
@@ -128,6 +130,7 @@ async function executeRollover(
   messages: MessageLike[],
   config: RolloverConfig,
   record: { rollover_count: number },
+  redactor?: Redactor,
 ): Promise<RolloverResult> {
   const cutoff = findTurnsCutoff(messages, config.recentTurnsToKeep);
   const oldMessages = messages.slice(0, cutoff);
@@ -173,19 +176,20 @@ async function executeRollover(
 export async function performRollover(
   pool: DatabasePool,
   sessionId: string,
-  messages: MessageLike[],
-  currentPromptTokens: number,
-  config: RolloverConfig,
+  messages: any[],
+  cfg: RolloverConfig,
+  redactor?: Redactor,
 ): Promise<RolloverResult> {
   const record = await getRolloverRecord(pool, sessionId);
+  const currentPromptTokens = estimateTokens(extractAllText(messages));
   const newCumulative = record.cumulative_tokens + currentPromptTokens;
 
-  if (newCumulative < config.rolloverAtTotalSessionTokens) {
+  if (newCumulative < cfg.rolloverAtTotalSessionTokens) {
     await upsertCumulativeTokens(pool, sessionId, newCumulative);
     return { ...NO_ROLLOVER, messages, cumulativeTokens: newCumulative };
   }
 
-  const result = await executeRollover(pool, sessionId, messages, config, record);
+  const result = await executeRollover(pool, sessionId, messages, cfg, record, redactor);
   if (!result.rolloverTriggered) {
     await upsertCumulativeTokens(pool, sessionId, newCumulative);
   }

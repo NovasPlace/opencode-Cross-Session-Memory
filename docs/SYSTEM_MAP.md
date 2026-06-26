@@ -6,6 +6,7 @@
 
 | File | Exports | Type | Role |
 |------|---------|------|------|
+| `src/redactor.ts` | RedactCategory, PathMode, RedactorConfig, RedactionAudit, RedactionResult, DEFAULT_REDACTOR_CONFIG, Redactor, redact, redactObject | source | Module |
 | `src/alchemist.ts` | DEFAULT_ALCHEMIST_CONFIG, AlchemistEngine | source | Module |
 | `src/types/opentui.d.ts` | createSignal, createEffect, onCleanup, createMemo, onMount, h, jsx, jsxs, Fragment, RGBA, Renderable, KeyEvent, SlotMode, CliRenderer, JSX, SolidPlugin, Binding, Keymap, KeyLike, KeySequencePart, KeyStringifyInput, StringifyOptions, stringifyKeySequence, stringifyKeyStroke, BindingConfig, BindingLookup, BindingValue, createBindingLookup, formatCommandBindings, formatKeySequence | types | Module |
 | `src/index.ts` | none | source | Module |
@@ -108,3 +109,4 @@
 - **Compaction quality gate** — entity_retention×0.35 + decision_retention×0.25 + error_retention×0.25 + similarity×0.15, reject if < 0.6
 - **Lesson-recall integration** — `compileContextWithLessons()` recalls verified past lessons via `AlchemistEngine.recall()`, ranks by type priority + confidence (threshold ≥ 0.5), injects matching lessons into future task context, and exposes what was injected via `CompileResult.injectedLessons` + `lessonTelemetry`. Bulk-load lessons via `AlchemistEngine.store()`. Makes the agent less likely to repeat old mistakes.
 - **Repo hygiene** — `npm run typecheck` (`tsc --noEmit`) and `npm run verify` (build + typecheck + full test suite) scripts. `*.bak` files gitignored. Core modules (`memory-graph`, `concept-extractor`, `priming-engine`) have dedicated test coverage.
+- **Privacy/redaction layer (Phase 18)** — `src/redactor.ts` standalone module redacts secrets, emails, phones, IPs, URL creds, paths before ANY persistence (memory, embeddings, checkpoints, context cache, distilled summaries, Alchemist lessons). Paths normalized to `[WORKSPACE]/relative` by default. Configurable categories, audit counts only, fail-closed. Wired into `MemoryManager`, `CheckpointStore`, `context-cache-store`, distilled summaries, `AlchemistEngine`. 31 unit + 9 integration tests.

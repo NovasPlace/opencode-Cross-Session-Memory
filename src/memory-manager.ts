@@ -7,6 +7,7 @@ import { extractConcepts } from './concept-extractor.js';
 import { buildLinksForMemory, findSharedEntities } from './memory-graph.js';
 import { hybridSearch, DEFAULT_WEIGHTS, type HybridWeights } from './hybrid-search.js';
 import { pruneMemories } from './prune-scorer.js';
+import { Redactor } from './redactor.js';
 import { DEFAULT_PRUNE_CONFIG } from './types.js';
 import {
   Memory,
@@ -25,10 +26,12 @@ import {
 export class MemoryManager {
   private database: Database;
   private embeddings: EmbeddingGenerator;
+  redactor?: Redactor;
 
-  constructor(database: Database, embeddings: EmbeddingGenerator) {
+  constructor(database: Database, embeddings: EmbeddingGenerator, redactor?: Redactor) {
     this.database = database;
     this.embeddings = embeddings;
+    this.redactor = redactor;
   }
 
   // ==================== Session Operations ====================
@@ -123,6 +126,13 @@ export class MemoryManager {
 async saveMemory(options: MemorySaveOptions): Promise<Memory> {
       const pool = this.database.getPool();
       
+      // Phase 18 — Redact content BEFORE any processing (concepts, embeddings, storage)
+      let contentToProcess = options.content;
+      if (this.redactor) {
+        const redactionResult = this.redactor.redact(options.content);
+        contentToProcess = redactionResult.text;
+      }
+      
       // Get project_id from session if available
       let projectId: string | null = null;
       if (options.sessionId) {
@@ -137,7 +147,7 @@ async saveMemory(options: MemorySaveOptions): Promise<Memory> {
       }
       
       // Extract concepts from content
-      const extraction = extractConcepts(options.content);
+      const extraction = extractConcepts(contentToProcess);
       const extracted = extraction.concepts;
       const mergedMetadata = { ...(options.metadata ?? {}), extracted_concepts: extracted };
       const mergedTags = Array.from(new Set([...(options.tags ?? []), ...extracted.map(c => c.value)]));
@@ -145,7 +155,7 @@ async saveMemory(options: MemorySaveOptions): Promise<Memory> {
       // Generate embedding first
       let embedding: number[] | null = null;
       try {
-        embedding = await this.embeddings.generate(options.content);
+        embedding = await this.embeddings.generate(contentToProcess);
       } catch (error) {
         console.error('[MemoryManager] Failed to generate embedding:', error);
       }
@@ -161,7 +171,7 @@ async saveMemory(options: MemorySaveOptions): Promise<Memory> {
           options.sessionId,
           projectId,
           options.type,
-          options.content,
+          contentToProcess,
           options.importance ?? 0.5,
           options.emotion ?? 'neutral',
           options.confidence ?? 1.0,
@@ -183,8 +193,8 @@ async saveMemory(options: MemorySaveOptions): Promise<Memory> {
              VALUES ($1, 0, $2, $3, $4, $5)`,
             [
               memory.id,
-              options.content,
-              Math.ceil(options.content.length / 4), // Rough token estimate
+              contentToProcess,
+              Math.ceil(contentToProcess.length / 4), // Rough token estimate
               `[${embedding.join(',')}]`,
               'hash-fallback', // Will be replaced with actual model name
             ]
@@ -199,7 +209,7 @@ async saveMemory(options: MemorySaveOptions): Promise<Memory> {
   
       // Build graph links for this memory
       try {
-        const extracted = extractConcepts(options.content);
+        const extracted = extractConcepts(contentToProcess);
         await buildLinksForMemory(this.database, memory.id, extracted.concepts);
       } catch (error) {
         console.error('[MemoryManager] Failed to build graph links:', error);

@@ -14,6 +14,7 @@ import { SubconsciousWatcher } from './subconscious.js';
 import { GitWatcher } from './git-watcher.js';
 import { LoopDetector } from './loop-detector.js';
 import { flushDocUpdates } from './hooks/auto-docs.js';
+import { Redactor } from './redactor.js';
 import { ContextPressure } from './context-pressure.js';
 import { ToolCallDistiller } from './tool-distiller.js';
 import { ContextCompactor } from './context-compactor.js';
@@ -75,7 +76,8 @@ export default async (
 
   const database = new Database(config);
   const embeddings = new EmbeddingGenerator(config);
-  const memoryManager = new MemoryManager(database, embeddings);
+  const redactor = new Redactor(config.redactor);
+  const memoryManager = new MemoryManager(database, embeddings, redactor);
   const memoryExtractor = new MemoryExtractor(database, memoryManager, config.extractor);
   const primingEngine = new PrimingEngine(database);
   const contextRecall = new ContextRecallDaemon(database, config.contextRecallInterval);
@@ -120,7 +122,7 @@ export default async (
   }
 
   // Phase 4A — Durable session checkpointing (initialized after DB connect)
-  const checkpointStore = new CheckpointStore(database.getPool());
+  const checkpointStore = new CheckpointStore(database.getPool(), redactor);
   const checkpointToolDeps: CheckpointToolDeps = {
     client: ctx.client,
     store: checkpointStore,
@@ -385,8 +387,8 @@ export default async (
                 pool,
                 sid,
                 output.messages as any[],
-                rawTotalTokens,
                 config.contextRollover,
+                redactor,
               );
               if (rolloverResult.rolloverTriggered) {
                 console.log(`[CrossSessionMemory] ${rolloverResult.auditLine}`);
@@ -638,7 +640,7 @@ export default async (
       memory_context: memoryContextTool(contextRecall),
       memory_lesson: memoryLessonTool(memoryManager),
       memory_transcript: memoryTranscriptTool(memoryManager),
-      memory_distill: memoryDistillTool(toolDistiller, database, memoryExtractor),
+      memory_distill: memoryDistillTool(toolDistiller, database, memoryExtractor, redactor),
       memory_distilled_view: memoryDistilledViewTool(database),
       memory_compact: memoryCompactTool(contextCompactor),
       // Phase 4A — Durable session checkpointing
@@ -667,14 +669,16 @@ export default async (
         if (summary.groups.length > 0) {
           try {
             const pool = database.getPool();
+            const redactedCompressed = redactor.redact(summary.compressed).text;
+            const redactedGroups = redactor.redact(JSON.stringify(summary.groups)).text;
             await pool.query(
               `INSERT INTO distilled_summaries (id, session_id, groups, compressed, total_calls_summarized)
                VALUES ($1, $2, $3, $4, $5)`,
               [
                 summary.id,
                 currentSessionId,
-                JSON.stringify(summary.groups),
-                summary.compressed,
+                redactedGroups,
+                redactedCompressed,
                 summary.totalCallsSummarized,
               ],
             );
