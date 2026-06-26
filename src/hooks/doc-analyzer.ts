@@ -291,6 +291,157 @@ export async function autoDocumentChange(
   await applyDocUpdate(plan);
 }
 
+export async function reconcileSystemMap(docsDir?: string): Promise<{ added: number; updated: number; removed: number }> {
+  const dir = docsDir ?? getDocsDir();
+  const srcDir = join(process.cwd(), "src");
+  let added = 0, updated = 0, removed = 0;
+
+  let systemMapContent: string;
+  try {
+    systemMapContent = await fs.readFile(join(dir, "SYSTEM_MAP.md"), "utf-8");
+  } catch {
+    return { added: 0, updated: 0, removed: 0 };
+  }
+
+  const srcFiles = await scanSourceFiles(srcDir);
+  const docEntries = parseSystemMapEntries(systemMapContent);
+  const docFileSet = new Set(docEntries.map(e => e.filePath));
+  const tableHeader = "| File | Exports | Type | Role |";
+
+  for (const sf of srcFiles) {
+    const relativePath = `src/${sf.relativePath}`;
+    const existing = docEntries.find(e => e.filePath === relativePath);
+
+    let content: string;
+    try {
+      content = await fs.readFile(join(srcDir, sf.relativePath), "utf-8");
+    } catch {
+      continue;
+    }
+
+    if (isStubContent(content)) continue;
+
+    const exports = extractExports(content);
+    const isTest = sf.relativePath.includes("test") || sf.relativePath.includes("spec");
+    const modType = isTest ? "test" : guessModuleType(sf.relativePath);
+    const role = guessModuleRole(sf.relativePath, exports);
+
+    const newRow = `| \`${relativePath}\` | ${exports.join(", ") || "none"} | ${modType} | ${role} |`;
+
+    if (!existing) {
+      const insertPoint = findTableInsertPoint(systemMapContent, tableHeader);
+      if (insertPoint !== -1) {
+        systemMapContent = systemMapContent.slice(0, insertPoint) + newRow + "\n" + systemMapContent.slice(insertPoint);
+        added++;
+      }
+    } else {
+      const oldRow = `| \`${relativePath}\` | ${existing.exports} | ${existing.type} | ${existing.role} |`;
+      if (oldRow !== newRow && systemMapContent.includes(oldRow)) {
+        systemMapContent = systemMapContent.replace(oldRow, newRow);
+        updated++;
+      }
+    }
+  }
+
+  for (const entry of docEntries) {
+    if (!entry.filePath.startsWith("src/")) continue;
+    const relativePath = entry.filePath.replace("src/", "");
+    if (!srcFiles.some(sf => sf.relativePath === relativePath)) {
+      const rowPattern = new RegExp(`\\| \\\`${entry.filePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\\`[^\\n]*\\n?`, "g");
+      const before = systemMapContent;
+      systemMapContent = systemMapContent.replace(rowPattern, "");
+      if (systemMapContent !== before) removed++;
+    }
+  }
+
+  if (added > 0 || updated > 0 || removed > 0) {
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(join(dir, "SYSTEM_MAP.md"), systemMapContent, "utf-8");
+  }
+
+  return { added, updated, removed };
+}
+
+interface SourceFile {
+  relativePath: string;
+}
+
+async function scanSourceFiles(srcDir: string): Promise<SourceFile[]> {
+  const results: SourceFile[] = [];
+  async function walk(dir: string, prefix: string): Promise<void> {
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name === "node_modules" || entry.name === "dist") continue;
+      const fullPath = join(dir, entry.name);
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        await walk(fullPath, rel);
+      } else if (entry.name.endsWith(".ts") || entry.name.endsWith(".js")) {
+        results.push({ relativePath: rel });
+      }
+    }
+  }
+  await walk(srcDir, "");
+  return results;
+}
+
+interface SystemMapEntry {
+  filePath: string;
+  exports: string;
+  type: string;
+  role: string;
+}
+
+function parseSystemMapEntries(content: string): SystemMapEntry[] {
+  const entries: SystemMapEntry[] = [];
+  const lines = content.split("\n");
+  for (const line of lines) {
+    const match = line.match(/^\| `([^`]+)` \| (.+?) \| (.+?) \| (.+?) \|$/);
+    if (match) {
+      entries.push({ filePath: match[1], exports: match[2], type: match[3], role: match[4] });
+    }
+  }
+  return entries;
+}
+
+function findTableInsertPoint(content: string, tableHeader: string): number {
+  const headerIdx = content.indexOf(tableHeader);
+  if (headerIdx === -1) return -1;
+  let afterHeader = headerIdx + tableHeader.length;
+  const separatorLine = content.indexOf("\n", afterHeader);
+  if (separatorLine === -1) return -1;
+  afterHeader = content.indexOf("\n", separatorLine + 1);
+  if (afterHeader === -1) return -1;
+  return afterHeader + 1;
+}
+
+function guessModuleType(relativePath: string): string {
+  const parts = relativePath.replace(/\\/g, "/").split("/");
+  if (parts.length > 1) return parts[0];
+  return "source";
+}
+
+function guessModuleRole(relativePath: string, exports: string[]): string {
+  const name = relativePath.toLowerCase();
+  if (name.includes("hook")) return "Hook handler";
+  if (name.includes("tool")) return "Tool registration";
+  if (name.includes("test") || name.includes("spec")) return "Test suite";
+  if (name.includes("schema")) return "SQL schema";
+  if (name.includes("config")) return "Configuration";
+  if (exports.includes("Database")) return "PostgreSQL connection & schema";
+  if (exports.some(e => e.includes("Compaction") || e.includes("Compactor"))) return "Context compaction engine";
+  if (exports.some(e => e.includes("Memory") || e.includes("Recall"))) return "Memory & recall subsystem";
+  if (exports.some(e => e.includes("Analytics"))) return "Usage analytics & reporting";
+  if (exports.some(e => e.includes("Quality"))) return "Quality measurement";
+  if (exports.some(e => e.includes("Prune"))) return "Memory pruning scorer";
+  return "Module";
+}
+
 export {
   CodeChange, DocUpdatePlan, analyzeChange, applyDocUpdate,
   hasExistingEntry, removeExistingEntry,

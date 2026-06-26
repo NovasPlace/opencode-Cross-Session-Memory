@@ -1,7 +1,7 @@
 import { PluginContext } from "../plugin-context.js";
 import { promises as fs } from "fs";
 import { join, normalize } from "path";
-import { autoDocumentChange } from "./doc-analyzer.js";
+import { autoDocumentChange, reconcileSystemMap } from "./doc-analyzer.js";
 
 export const DEFAULT_AUTO_DOCS_CONFIG = {
   enabled: true,
@@ -103,6 +103,15 @@ export async function flushDocUpdates(context?: PluginContext): Promise<void> {
     }
   } catch (err) {
     console.error("[auto-docs] flush error:", err);
+  }
+
+  try {
+    const reconResult = await reconcileSystemMap();
+    if (reconResult.added > 0 || reconResult.updated > 0 || reconResult.removed > 0) {
+      console.log(`[auto-docs] SYSTEM_MAP reconciled: +${reconResult.added} ~${reconResult.updated} -${reconResult.removed}`);
+    }
+  } catch (err) {
+    console.error("[auto-docs] reconcile error:", err);
   }
 
   flushed = true;

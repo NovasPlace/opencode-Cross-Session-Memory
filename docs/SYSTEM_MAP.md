@@ -6,95 +6,97 @@
 
 | File | Exports | Type | Role |
 |------|---------|------|------|
-| `src/index.ts` | CrossSessionMemoryPlugin | plugin | Entry point — registers hooks, tools, DB |
-| `src/plugin-context.ts` | PluginContext | context | Shared state container for all subsystems |
-| `src/config.ts` | resolveConfig | config | Plugin config defaults + validation |
-| `src/types.ts` | All interfaces & types | types | Shared type definitions |
-| `src/tools.ts` | defaultTools | tools | Tool registration (CLI-facing) |
-| `src/database.ts` | Database | database | PostgreSQL connection, schema init, migrations |
-| `src/embeddings.ts` | EmbeddingGenerator | embeddings | Ollama embedding generation |
-| `src/memory-manager.ts` | MemoryManager | memory | CRUD + search for memories |
-| `src/memory-graph.ts` | MemoryGraph | graph | Concept extraction + link storage |
-| `src/memory-extractor.ts` | MemoryExtractor | extractor | Raw text → semantic memory extraction |
-| `src/concept-extractor.ts` | extractConcepts | concept | LLM-based concept extraction |
-| `src/hybrid-search.ts` | hybridSearch, vectorSearch, fullTextSearch, entityMatchBoost | search | RRF-based hybrid search (vector + text + entity) |
-| `src/compaction-quality.ts` | measureCompactionQuality, extractEntities, extractDecisions, extractWarningsErrors, computeRetention | metrics | Compaction quality scoring (entity/decision/error retention + drift) |
-| `src/prune-scorer.ts` | pruneMemories, isProtectedMemory_, computeAgeDays_, computeEntityDensity_, computePruneScore_, buildPruneReport_ | prune | Multi-signal prune scoring with protection rules (dry-run only) |
+| `src/types/opentui.d.ts` | createSignal, createEffect, onCleanup, createMemo, onMount, h, jsx, jsxs, Fragment, RGBA, Renderable, KeyEvent, SlotMode, CliRenderer, JSX, SolidPlugin, Binding, Keymap, KeyLike, KeySequencePart, KeyStringifyInput, StringifyOptions, stringifyKeySequence, stringifyKeyStroke, BindingConfig, BindingLookup, BindingValue, createBindingLookup, formatCommandBindings, formatKeySequence | types | Module |
+| `src/index.ts` | none | source | Module |
+| `src/plugin-context.ts` | AutoCheckpointFn, PluginState, PluginContext | source | Module |
+| `src/config.ts` | DEFAULT_CONFIG | source | Configuration |
+| `src/types.ts` | MemoryType, MemoryCandidateStatus, MemoryCandidate, MemoryApproval, TTLConfig, ProjectScope, ExtractorConfig, MemoryEmotion, MemorySource, SortBy, MemorySearchMode, Session, Memory, MemoryChunk, MemoryEvent, SessionContext, BudgetMode, ContextCompilerConfig, ContextCacheConfig, CompressedPartDetail, ContextCompilationEntry, ProviderPricing, CompactionReport, ToolDominanceTrendPoint, SessionAnalytics, AutoDocsConfig, PluginConfig, CompactorConfig, AssistantCompactorConfig, CompactionResult, CumulativeCompactionStats, CompactionQualityMetrics, CompactionQualityConfig, DEFAULT_COMPACTION_QUALITY_CONFIG, DistillerConfig, ToolCallRecord, ToolCallGroup, ToolCallSummary, ContextBrief, LoopDetectionResult, ContextPressureResult, RecallResult, MemorySaveOptions, MemorySearchOptions, MemoryListOptions, DatabasePool, DatabaseClient, PruneRiskLevel, PruneSignal, PruneCandidate, PruneReport, PruneConfig, DEFAULT_PRUNE_CONFIG | source | Context compaction engine |
+| `src/tools.ts` | memorySaveTool, memorySearchTool, memoryDeleteTool, memoryContextTool, memoryLessonTool, memoryListTool, memoryTranscriptTool, memoryCandidateListTool, memoryCandidateApproveTool, memoryCandidateRejectTool, memoryProjectListTool, memoryCleanupTool, memoryDistillTool, memoryDistilledViewTool, memoryCompactTool | source | Tool registration |
+| `src/database.ts` | Database | source | PostgreSQL connection & schema |
+| `src/embeddings.ts` | EmbeddingChunk, EmbeddingConfig, EmbeddingGenerator | source | Module |
+| `src/memory-manager.ts` | MemoryManager | source | Memory & recall subsystem |
+| `src/memory-graph.ts` | MemoryLink, RelatedMemory, initializeGraphSchema, buildLinksForMemory, getRelatedMemories, findSharedEntities | source | Memory & recall subsystem |
+| `src/memory-extractor.ts` | MemoryExtractor | source | Memory & recall subsystem |
+| `src/concept-extractor.ts` | ExtractedConcept, ExtractionResult, extractConcepts, mergeConcepts | source | Module |
+| `src/hybrid-search.ts` | HybridWeights, ftsSearch, vectorSearch, entityMatchBoost, reciprocalRankFusion, applyWeights, hybridSearch | source | Module |
+| `src/compaction-quality.ts` | extractEntities, extractDecisions, extractWarningsErrors, computeRetention, computeCompressionRatio, computeQualityScore, measureCompactionQuality, cosineSimilarity | source | Context compaction engine |
+| `src/prune-scorer.ts` | pruneMemories, computeAgeDays_, computeEntityDensity_, isProtectedMemory_, computePruneScore_, buildReason_, classifyRisk_, buildPruneReport_ | source | Memory & recall subsystem |
 
 ## Context Pipeline
 
 | File | Exports | Type | Role |
 |------|---------|------|------|
-| `src/context-compiler.ts` | ContextCompiler | compiler | Builds context manifest from memories |
-| `src/context-compactor.ts` | ContextCompactor | compactor | Distills tool-call output, runs quality measurement |
-| `src/context-pressure.ts` | ContextPressure | pressure | Token budget tracking |
-| `src/context-recall.ts` | ContextRecall | recall | Recall search tools |
-| `src/context-rollover.ts` | ContextRollover | rollover | Session rollover with brief handoff |
-| `src/context-rollover-config.ts` | RolloverConfig | config | Rollover configuration |
-| `src/context-rollover-brief.ts` | generateRolloverBrief | brief | Generates next-session brief |
-| `src/context-rollover-schema.ts` | rolloverSchema | schema | Rollover SQL schema |
-| `src/context-compilation-log.ts` | CompilationLog | log | Compilation event logging |
-| `src/context-compilation-schema.ts` | compilationSchema | schema | Compilation SQL schema |
+| `src/context-compiler.ts` | CompileResult, scoreCriticality, compileContext, formatStatusLine | source | Module |
+| `src/context-compactor.ts` | ContextCompactor, createContextCompactor | source | Context compaction engine |
+| `src/context-pressure.ts` | Message, ContextPressure | source | Module |
+| `src/context-recall.ts` | ContextRecallDaemon | source | Memory & recall subsystem |
+| `src/context-rollover.ts` | RolloverResult, performRollover | source | Module |
+| `src/context-rollover-config.ts` | RolloverConfig, DEFAULT_ROLLOVER_CONFIG | source | Configuration |
+| `src/context-rollover-brief.ts` | ContinuationBrief, buildContinuationBrief | source | Module |
+| `src/context-rollover-schema.ts` | initializeRolloverSchema, RolloverRecord, getRolloverRecord, upsertCumulativeTokens, recordRollover, setHardRolloverFlag, clearHardRolloverFlag | source | SQL schema |
+| `src/context-compilation-log.ts` | logCompilation, getRecentCompilation, getCompilationHistory, pruneOldDetails | source | Module |
+| `src/context-compilation-schema.ts` | initializeContextCompilationSchema | source | SQL schema |
+| `src/compaction-analytics.ts` | DEFAULT_PROVIDER_PRICING, CompactionAnalytics | source | Context compaction engine |
 
 ## Context Cache
 
 | File | Exports | Type | Role |
 |------|---------|------|------|
-| `src/context-cache-store.ts` | ContextCacheStore | store | Persist/restore cached context items |
-| `src/context-cache-runtime.ts` | ContextCacheRuntime | runtime | Runtime read-through cache |
-| `src/context-cache-manifest.ts` | ContextCacheManifest | manifest | Manifest builder for cached items |
-| `src/context-cache-tools.ts` | ContextCacheTool | tools | Cache-aware tool registration |
-| `src/context-cache-schema.ts` | cacheSchema | schema | Cache SQL schema |
-| `src/context-review-tool.ts` | ContextReviewTool | review | Context review + compaction trigger |
+| `src/context-cache-store.ts` | CacheKind, CacheItemInput, CacheItem, storeItem, fetchItem, searchItems, fetchFileReads, fetchLastError, fetchDecisions, countItems, pruneOldItems | source | Module |
+| `src/context-cache-runtime.ts` | CacheRuntimeConfig, CacheRuntimeResult, cacheOldContext | source | Module |
+| `src/context-cache-manifest.ts` | ManifestEntry, ManifestResult, buildManifestFromRows, buildManifest | source | Module |
+| `src/context-cache-tools.ts` | ContextCacheToolDeps, contextFetchTool, contextSearchTool, contextFetchFileRegionTool, contextFetchLastErrorTool, contextFetchDecisionLogTool | source | Tool registration |
+| `src/context-cache-schema.ts` | initializeContextCacheSchema | source | SQL schema |
+| `src/context-review-tool.ts` | ContextReviewDeps, contextReviewTool | source | Tool registration |
 
 ## Checkpoint System
 
 | File | Exports | Type | Role |
 |------|---------|------|------|
-| `src/checkpoint-builder.ts` | CheckpointBuilder | builder | Builds checkpoint from session state |
-| `src/checkpoint-capture.ts` | captureCheckpoint | capture | Captures tool outputs for checkpoint |
-| `src/checkpoint-inject.ts` | injectCheckpoint | inject | Restores checkpoint into context |
-| `src/checkpoint-store.ts` | CheckpointStore | store | PostgreSQL checkpoint persistence |
-| `src/checkpoint-schema.ts` | checkpointSchema | schema | Checkpoint SQL schema |
-| `src/checkpoint-markdown.ts` | checkpointToMarkdown | markdown | Checkpoint → Markdown renderer |
-| `src/checkpoint-telemetry.ts` | CheckpointTelemetry | telemetry | Checkpoint event tracking |
-| `src/checkpoint-tool.ts` | CheckpointTool | tool | CLI checkpoint tool |
-| `src/checkpoint-types.ts` | Checkpoint types | types | Checkpoint interface definitions |
+| `src/checkpoint-builder.ts` | BuildInput, BuildResult, buildCheckpoint | source | Module |
+| `src/checkpoint-capture.ts` | collectRawCaptures, estimateInputTokens | source | Module |
+| `src/checkpoint-inject.ts` | CheckpointInjectDeps, buildCheckpointInjection | source | Module |
+| `src/checkpoint-store.ts` | CheckpointStore | source | Module |
+| `src/checkpoint-schema.ts` | CHECKPOINT_SCHEMA_VERSION, initializeCheckpointSchema | source | SQL schema |
+| `src/checkpoint-markdown.ts` | CheckpointSections, buildCheckpointMarkdown | source | Module |
+| `src/checkpoint-telemetry.ts` | CheckpointCreatedEvent, CheckpointExpandedEvent, CheckpointListedEvent, CheckpointInjectedEvent, logCheckpointCreated, logCheckpointExpanded, logCheckpointListed, logCheckpointInjected, logCheckpointError | source | Module |
+| `src/checkpoint-tool.ts` | CheckpointToolDeps, createCheckpointTool, expandCheckpointRefTool, listCheckpointsTool | source | Tool registration |
+| `src/checkpoint-types.ts` | RawCaptureKind, SourceRef, CompactedRef, RawCaptureRecord, StoreRawInput, CheckpointRecord, CreateCheckpointInput, CheckpointTelemetry, ExpandedRef, CheckpointConfig, AutoCheckpointConfig, SessionMessage, SessionPart | source | Module |
 
 ## Compaction Helpers
 
 | File | Exports | Type | Role |
 |------|---------|------|------|
-| `src/compaction-utils.ts` | compaction utils | utils | Shared compaction helper functions |
-| `src/compaction-types.ts` | compaction types | types | Compaction-specific interfaces |
-| `src/compaction-tracker.ts` | CompactionTracker | tracker | Cumulative compaction statistics |
-| `src/helpers/compaction-metrics.ts` | compactionMetrics | metrics | Compaction telemetry helpers |
-| `src/helpers/auto-checkpoint.ts` | autoCheckpoint | helper | Auto-checkpoint on risky edits |
+| `src/compaction-utils.ts` | hasOpenCodeDiscardMarker, isAlreadyCompacted, adaptiveWindow, isRecentEnough, collectToolParts, extractCriticalSignals, findMatchingGroup, extractFile, truncateInput, measureTotalChars | source | Module |
+| `src/compaction-types.ts` | ToolPartLike, ToolPartLocation | source | Module |
+| `src/compaction-tracker.ts` | ReprocessingEntry, CompactionTracker | source | Context compaction engine |
+| `src/helpers/compaction-metrics.ts` | recordCompactionMetric, hasToolDiscardMarker | helpers | Context compaction engine |
+| `src/helpers/auto-checkpoint.ts` | AutoCheckpointTrigger, AutoCheckpointContext, createAutoCheckpoint | helpers | Module |
 
 ## Hooks
 
 | File | Exports | Type | Role |
 |------|---------|------|------|
-| `src/hooks/auto-docs.ts` | queueDocUpdate, flushDocUpdates, isIgnoredPath | hook | Queues doc updates on file edits, flushes on session end |
-| `src/hooks/doc-analyzer.ts` | analyzeChange, applyDocUpdate, isIgnoredForAnalysis, isStubContent | analyzer | File change → doc section update (dedup, stub-filtered) |
-| `src/hooks/tool-execute.ts` | afterToolExecute | hook | Post-tool execution: auto-docs, auto-checkpoint |
-| `src/hooks/session-compaction.ts` | sessionCompactionHook | hook | Session-end compaction trigger |
-| `src/hooks/system-transform.ts` | systemTransformHook | hook | System prompt injection |
+| `src/hooks/auto-docs.ts` | DEFAULT_AUTO_DOCS_CONFIG, queueDocUpdate, isIgnoredPath, flushDocUpdates, clearPendingUpdates, getPendingUpdates, resetFlushedFlag | hooks | Hook handler |
+| `src/hooks/doc-analyzer.ts` | isIgnoredForAnalysis, isStubContent, updateDocContent, shouldSkipEntry, autoDocumentChange, reconcileSystemMap | hooks | Hook handler |
+| `src/hooks/tool-execute.ts` | createToolExecuteBeforeHook, createToolExecuteAfterHook | hooks | Hook handler |
+| `src/hooks/session-compaction.ts` | createSessionCompactingHook, createAutocontinueHook | hooks | Hook handler |
+| `src/hooks/system-transform.ts` | createSystemTransformHook | hooks | Hook handler |
 
 ## Other Subsystems
 
 | File | Exports | Type | Role |
 |------|---------|------|------|
-| `src/goal-schema.ts` | goalSchema | schema | Goals SQL schema |
-| `src/goal-tools.ts` | GoalTools | tools | Goal CRUD tools |
-| `src/git-watcher.ts` | GitWatcher | watcher | Git change detection |
-| `src/loop-detector.ts` | LoopDetector | detector | Repeated tool-call loop detection |
-| `src/priming-engine.ts` | PrimingEngine | engine | Context priming on session start |
-| `src/subconscious.ts` | Subconscious | subconscious | Background context maintenance |
-| `src/token-bucket-analyzer.ts` | TokenBucketAnalyzer | analyzer | Token budget analysis |
-| `src/tool-distiller.ts` | ToolDistiller | distiller | Distills tool-call output |
-| `src/tui.ts` | TUI | tui | Solid-PRG TUI (optional adapter) |
-| `src/assistant-text-compactor.ts` | AssistantTextCompactor | compactor | Compacts assistant response text |
+| `src/goal-schema.ts` | Goal, initializeGoalSchema, setActiveGoal, updateGoal, getActiveGoal, listGoals | source | SQL schema |
+| `src/goal-tools.ts` | GoalToolDeps, goalSetTool, goalUpdateTool, goalListTool | source | Tool registration |
+| `src/git-watcher.ts` | GitCommit, GitRepoState, GitWatcher | source | Module |
+| `src/loop-detector.ts` | ToolCall, LoopDetector | source | Module |
+| `src/priming-engine.ts` | CascadeResult, PrimingEngine | source | Module |
+| `src/subconscious.ts` | FileChangeEvent, SubconsciousWatcher | source | Module |
+| `src/token-bucket-analyzer.ts` | BucketBreakdown, estimateTokens, estimatePartTokens, analyzeMessages, estimateSystemPrompt, formatBreakdown | source | Module |
+| `src/tool-distiller.ts` | ToolCallDistiller | source | Tool registration |
+| `src/tui.ts` | none | source | Module |
+| `src/assistant-text-compactor.ts` | AssistantCompactorConfig, AssistantCompactionResult, compactAssistantText | source | Context compaction engine |
 
 ## Key Decisions
 
