@@ -21,8 +21,48 @@ export interface CompileResult {
   pinnedCategories: Record<string, number>;
 }
 
-const ALREADY_COMPACTED = ['[COMPACTED_TOOL]', '[COMPRESSED]'];
+const ALREADY_COMPACTED = ['[COMPACTED_TOOL]', '[COMPRESSED]', '[TOOL:', '[CRITICAL_TOOL:', '[OK]'];
 const STEP_TYPES = ['step-start', 'step-finish', 'compaction', 'reasoning', 'snapshot', 'patch'];
+
+const CRITICAL_PATTERNS: RegExp[] = [
+  /\berror\b/i, /\bexception\b/i, /\bfail(ed|ure)?\b/i,
+  /\bstack\s*trace\b/i, /\bTraceback\b/i,
+  /\bexit\s+code\s*[1-9]/, /\bFATAL\b/i,
+  /\bmigration\b.*\b(fail|error|rollback)\b/i,
+  /\bCONFLICT\b/i, /\bMERGE\s+CONFLICT\b/i,
+  /\bdenied\b/i, /\bpermission\s+denied\b/i,
+  /\bECONNREFUSED\b/i, /\bETIMEDOUT\b/i, /\bENOTFOUND\b/i,
+];
+const LOW_SIGNAL_PATTERNS: RegExp[] = [
+  /^\s*\d+\s+(file|files|items?|results?)\s*(found|matched|listed)/im,
+  /^\.\/[^\n]+$/m,
+  /^\s*$/m,
+];
+const LOW_SIGNAL_TOOLS = new Set(['glob', 'ls', 'directory']);
+const CRITICAL_TOOLS = new Set(['edit', 'write', 'bash']);
+
+/** Score tool output criticality: 0=low, 1=medium, 2=critical */
+export function scoreCriticality(part: any): number {
+  if (part.type !== 'tool') return 0;
+  if (part.state?.status === 'error' || part.state?.type === 'error') return 2;
+  const tool = String(part.tool ?? '');
+  const output = String(part.state?.output ?? '');
+  for (const pat of CRITICAL_PATTERNS) {
+    if (pat.test(output)) return 2;
+  }
+  if (CRITICAL_TOOLS.has(tool)) {
+    const exitCode = part.state?.exitCode ?? part.state?.input?.exitCode;
+    if (exitCode != null && exitCode !== 0 && exitCode !== '0') return 2;
+    if (tool === 'bash' && /\bdiff\b|\bgit\s+(add|commit|push|pull|merge|rebase|reset|checkout)\b/i.test(String(part.state?.input?.command ?? ''))) return 1;
+    if (tool === 'edit' || tool === 'write') return 1;
+  }
+  if (LOW_SIGNAL_TOOLS.has(tool)) return 0;
+  if (output.trim().length < 50) return 0;
+  for (const pat of LOW_SIGNAL_PATTERNS) {
+    if (pat.test(output)) return 0;
+  }
+  return 0;
+}
 
 function isAlreadyCompressed(part: any): boolean {
   const text = part.text ?? part.state?.output ?? '';
@@ -48,27 +88,35 @@ function classifyPart(
 ): string {
   if (isAlreadyCompressed(part)) return 'compressible';
   if (role === 'user') return 'user_message';
+  const criticality = scoreCriticality(part);
   const isRecent = msgIndex >= totalMsgs - adaptiveWindow;
   const isLastTurn = msgIndex >= totalMsgs - 2;
-  if (isRecent) {
-    if (part.type === 'tool' && (part.state?.status === 'error' || part.state?.type === 'error')) return 'error';
-    if (isLastTurn) return 'recent_turn';
-    if (pressureRatio > 1.5 && part.type === 'tool' && (part.state?.status === 'completed' || part.state?.type === 'completed')) return 'compressible';
-    if (pressureRatio > 2.0 && part.type === 'tool') return 'compressible';
+  if (isLastTurn) {
+    if (criticality >= 2 && pressureRatio > 2.0) return 'compressible_critical';
+    if (criticality >= 2) return 'critical_raw';
+    if (pressureRatio > 1.5) return 'compressible';
     return 'recent_turn';
   }
-  if (part.type === 'tool' && (part.state?.status === 'error' || part.state?.type === 'error')) return 'error';
+  if (isRecent) {
+    if (criticality >= 2 && pressureRatio > 3.0) return 'compressible_critical';
+    if (criticality >= 2) return 'critical_raw';
+    if (criticality >= 1 && pressureRatio > 1.5) return 'compressible_critical';
+    if (criticality >= 1) return 'recent_critical';
+    if (pressureRatio > 1.5) return 'compressible';
+    return 'recent_turn';
+  }
+  if (criticality >= 2 && pressureRatio <= 3.0) return 'critical_raw';
+  if (criticality >= 2) return 'compressible_critical';
+  if (criticality >= 1) return 'compressible_critical';
   if (STEP_TYPES.includes(part.type)) return 'step_type';
   if (part.type === 'tool' && (part.state?.status === 'completed' || part.state?.type === 'completed')) {
     if (estimateTokens(String(part.state.output ?? '')) > 100) return 'compressible';
-    if (msgIndex < totalMsgs - adaptiveWindow * 2) return 'compressible';
-    if (pressureRatio > 1.5) return 'compressible';
+    if (pressureRatio > 1.0) return 'compressible';
     return 'short_tool_output';
   }
   if (part.type === 'text') {
     if (estimateTokens(String(part.text ?? '')) > 200) return 'compressible';
-    if (msgIndex < totalMsgs - adaptiveWindow * 3) return 'compressible';
-    if (pressureRatio > 1.5) return 'compressible';
+    if (pressureRatio > 1.0) return 'compressible';
     return 'short_text';
   }
   return 'other';
@@ -105,14 +153,43 @@ function toolRiskAndSignals(tool: string, input: any, before: number): { risk: C
 
 function compressToolOutput(part: any): CompressedPartDetail | null {
   if (part.state?.status !== 'completed' && part.state?.type !== 'completed') return null;
-  const before = estimateTokens(String(part.state.output ?? ''));
+  const output = String(part.state.output ?? '');
+  const before = estimateTokens(output);
+  if (before <= 3) return null;
   const tool = part.tool ?? 'unknown';
   const input = part.state?.input ?? {};
-  const output = String(part.state.output ?? '');
-  const lines = output.split('\n').length;
-  const summary = buildToolSummary(tool, input, lines);
+
+  const criticality = scoreCriticality(part);
+  if (before <= 8) {
+    part.state.output = '[OK]';
+    const after = 1;
+    return {
+      kind: `tool_${tool}`, source: input.filePath ?? input.command ?? input.pattern ?? '',
+      reason: 'tiny_tool_output', beforeTokens: before, afterTokens: after,
+      compressionRatio: after / before, preservedSignals: [], risk: 'low',
+    };
+  }
+
+  const lineCount = output.split('\n').length;
+  if (criticality >= 2) {
+    const errLines = output.split('\n').slice(0, 10).join('\n');
+    const summary = `[CRITICAL_TOOL:${tool}] ${input.filePath ?? input.command ?? ''}\n${errLines}`;
+    const summaryTokens = estimateTokens(summary);
+    if (summaryTokens < before) {
+      part.state.output = summary;
+    }
+    const after = estimateTokens(String(part.state.output ?? ''));
+    const meta = toolRiskAndSignals(tool, input, before);
+    return {
+      kind: `tool_${tool}`, source: input.filePath ?? input.command ?? input.pattern ?? '',
+      reason: 'critical_content_preserved', beforeTokens: before, afterTokens: after,
+      compressionRatio: before > 0 ? after / before : 0, preservedSignals: [...meta.signals, 'error_content'], risk: 'high',
+    };
+  }
+  const summary = buildToolSummary(tool, input, lineCount);
   part.state.output = summary;
-  const after = estimateTokens(summary);
+  const after = estimateTokens(String(part.state.output ?? ''));
+  if (after >= before) return null;
   const meta = toolRiskAndSignals(tool, input, before);
   return {
     kind: `tool_${tool}`, source: input.filePath ?? input.command ?? input.pattern ?? '',
@@ -146,7 +223,7 @@ function classifyAndCollect(
     const role = messages[i].info?.role ?? 'unknown';
     for (const part of messages[i].parts ?? []) {
       const cls = classifyPart(part, i, totalMsgs, role, adaptiveWindow, pressureRatio);
-      if (cls === 'compressible') {
+      if (cls === 'compressible' || cls === 'compressible_critical') {
         candidates.push({ part, tokens: estimateTokens(String(part.text ?? part.state?.output ?? '')) });
       } else {
         pinnedCategories[cls] = (pinnedCategories[cls] ?? 0) + 1;
@@ -159,7 +236,12 @@ function classifyAndCollect(
 function compressToFit(
   candidates: { part: any; tokens: number }[], target: number,
 ): { saved: number; details: CompressedPartDetail[] } {
-  candidates.sort((a, b) => b.tokens - a.tokens);
+  candidates.sort((a, b) => {
+    const critA = scoreCriticality(a.part);
+    const critB = scoreCriticality(b.part);
+    if (critA !== critB) return critA - critB;
+    return b.tokens - a.tokens;
+  });
   let saved = 0;
   const details: CompressedPartDetail[] = [];
   for (const c of candidates) {

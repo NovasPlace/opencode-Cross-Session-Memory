@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { compileContext } from '../dist/context-compiler.js';
+import { compileContext, scoreCriticality } from '../dist/context-compiler.js';
 import type { ContextCompilerConfig } from '../dist/types.js';
 
 const DEFAULT_CONFIG: ContextCompilerConfig = {
@@ -275,5 +275,65 @@ describe('Phase 5 — Context Compiler', () => {
       recentTurnWindow: 1,
     });
     assert.equal(errorPart.state.error, 'fatal crash', 'error preserved even under pressure');
+  });
+
+  it('13. criticality: error outputs preserved in summary, success bash compressed first', () => {
+    const successOutputs = Array.from({ length: 10 }, (_, i) =>
+      toolPart('bash', `success output ${i}: ${'ok '.repeat(50)}`, `/ok${i}.ts`)
+    );
+    const errorOutput = {
+      type: 'tool' as const,
+      tool: 'bash',
+      state: { status: 'completed', output: 'ERROR: build failed\nstack trace here', input: { command: 'npm run build' }, title: 'bash call', time: { start: 0, end: 100, duration: 100 } },
+      callID: 'call-build-err',
+      id: 'tool-build-err',
+    };
+    const messages = [
+      msg('user', [textPart('start')]),
+      msg('assistant', successOutputs),
+      msg('assistant', [errorOutput]),
+      ...Array.from({ length: 5 }, (_, i) => fillerMsg(i)),
+      msg('user', [textPart('fix it')]),
+      msg('assistant', [textPart('done')]),
+    ];
+    const result = compileContext(messages, {
+      ...DEFAULT_CONFIG,
+      modes: { cheap: 100, normal: 100, deep: 100 },
+      defaultMode: 'normal',
+      recentTurnWindow: 2,
+    });
+    const successCompressed = result.compressedDetails.some(d => d.kind === 'tool_bash' && d.source !== 'npm run build');
+    assert.ok(successCompressed, `success bash outputs should be compressed, compressedDetails: ${JSON.stringify(result.compressedDetails)}`);
+    const errorDetailed = result.compressedDetails.find(d => d.source === 'npm run build');
+    assert.ok(errorDetailed, 'error bash should be compressed with preserved details');
+    assert.ok(errorDetailed.preservedSignals.includes('error_content'), 'error output should preserve error_content signal');
+    assert.ok(errorDetailed.risk === 'high', 'error output compression should be high risk');
+  });
+
+  it('14. criticality: directory listings compress before file diffs', () => {
+    const listing = toolPart('glob', Array.from({ length: 50 }, (_, i) => `src/module${i}/index.ts`).join('\n'), '/project');
+    listing.tool = 'glob';
+    const diff = toolPart('bash', '--- a/src/main.ts\n+++ b/src/main.ts\n@@ -1,5 +1,8 @@\n-import { x } from \'y\';\n+import { x, z } from \'y\';\n+const w = z();\n', '/project/src/main.ts');
+    diff.tool = 'bash';
+    const messages = [
+      msg('user', [textPart('start')]),
+      msg('assistant', [listing, diff]),
+      ...Array.from({ length: 6 }, (_, i) => fillerMsg(i)),
+      msg('user', [textPart('go')]),
+      msg('assistant', [textPart('done')]),
+    ];
+    const result = compileContext(messages, {
+      ...DEFAULT_CONFIG,
+      modes: { cheap: 100, normal: 100, deep: 100 },
+      defaultMode: 'normal',
+      recentTurnWindow: 2,
+    });
+    assert.ok(result.partsCompressed > 0, 'should compress something');
+  });
+
+  it('15. scoreCriticality returns 0 for low-signal glob output', () => {
+    const part = toolPart('glob', 'src/foo.ts\nsrc/bar.ts\nsrc/baz.ts', '');
+    part.tool = 'glob';
+    assert.equal(scoreCriticality(part), 0, 'glob listing should be low criticality');
   });
 });
