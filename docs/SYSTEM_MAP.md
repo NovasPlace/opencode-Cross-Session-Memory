@@ -16,7 +16,7 @@
 | `src/database.ts` | Database | source | PostgreSQL connection & schema |
 | `src/embeddings.ts` | EmbeddingChunk, EmbeddingConfig, EmbeddingGenerator | source | Module |
 | `src/memory-manager.ts` | MemoryManager | source | Memory & recall subsystem |
-| `src/memory-graph.ts` | MemoryLink, RelatedMemory, initializeGraphSchema, buildLinksForMemory, getRelatedMemories, findSharedEntities | source | Memory & recall subsystem |
+| `src/memory-graph.ts` | MemoryLink, RelatedMemory, initializeGraphSchema, inferLinkType, buildLinksForMemory, getRelatedMemories, findSharedEntities | source | Memory & recall subsystem |
 | `src/memory-extractor.ts` | MemoryExtractor | source | Memory & recall subsystem |
 | `src/concept-extractor.ts` | ExtractedConcept, ExtractionResult, extractConcepts, mergeConcepts | source | Module |
 | `src/hybrid-search.ts` | HybridWeights, ftsSearch, vectorSearch, entityMatchBoost, reciprocalRankFusion, applyWeights, hybridSearch | source | Module |
@@ -107,3 +107,4 @@
 - **RRF hybrid search** — vector (0.35) + text (0.25) + entity (0.35) with exact-match boosting
 - **Compaction quality gate** — entity_retention×0.35 + decision_retention×0.25 + error_retention×0.25 + similarity×0.15, reject if < 0.6
 - **Lesson-recall integration** — `compileContextWithLessons()` recalls verified past lessons via `AlchemistEngine.recall()`, ranks by type priority + confidence (threshold ≥ 0.5), injects matching lessons into future task context, and exposes what was injected via `CompileResult.injectedLessons` + `lessonTelemetry`. Bulk-load lessons via `AlchemistEngine.store()`. Makes the agent less likely to repeat old mistakes.
+- **Repo hygiene** — `npm run typecheck` (`tsc --noEmit`) and `npm run verify` (build + typecheck + full test suite) scripts. `*.bak` files gitignored. Core modules (`memory-graph`, `concept-extractor`, `priming-engine`) have dedicated test coverage.

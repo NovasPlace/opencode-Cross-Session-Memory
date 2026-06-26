@@ -36,7 +36,7 @@ export async function initializeGraphSchema(db: Database): Promise<void> {
   `);
 }
 
-function inferLinkType(
+export function inferLinkType(
   sourceContent: string,
   targetContent: string,
   sourceDate: Date,
