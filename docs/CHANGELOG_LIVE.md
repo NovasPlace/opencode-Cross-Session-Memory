@@ -2,12 +2,29 @@
 
 ## Development Log
 
+### 2026-06-26 — Phase 18b: Fix context-rollover failures (305 tests, all green)
+- Restored `performRollover` original signature `(pool, sessionId, messages, rawTotalTokens, cfg, redactor?)`
+- Phase 18 redactor wiring had shifted parameter order, breaking 6 rollover tests
+- Full suite now fully green: 305 pass, 0 fail
+
 ### 2026-06-26 — Phase 18: Privacy/redaction layer (305 tests)
-- `src/redactor.ts` — standalone redaction module with configurable categories (secrets, emails, phones, IPs, URL creds, paths), audit counts, fail-closed behavior
-- Path handling: absolute → `[WORKSPACE]/relative` by default (preserves coding utility, hides personal paths)
-- Wired into every persistence path: `MemoryManager.saveMemory()`, `CheckpointStore.createCheckpoint()`, `context-cache-store.storeItem()`, distilled summaries INSERTs, `AlchemistEngine.synthesize()/store()`
-- Redaction happens BEFORE persistence, embeddings, checkpoints, context cache, distilled summaries, Alchemist lessons
-- `RedactorConfig` added to `PluginConfig` with secure-by-default categories; `path` mode defaults to `normalize`
-- Audit metadata with category counts only; never stores raw secrets in audit
-- 31 unit tests + 9 integration tests (proves no raw secret in stored content, audit counts correct, category toggles work, fail-closed safe)
-- 298 tests pass (7 context-rollover wiring issues unrelated to redactor; 1 pre-existing prune flake)
+- `src/redactor.ts` — standalone redaction module with configurable categories (secrets, emails, phones, IPs, URL creds, paths)
+- Wired into all 6 storage paths: memory save, embeddings/chunks/concepts, checkpoints/raw captures, context cache, distilled summaries, Alchemist lessons
+- Workspace-relative path normalization by default (not blind removal)
+- Audit metadata with counts only, never raw values
+- Fail-closed behavior on unexpected input
+- 40 new tests (31 unit + 9 integration)
+
+### 2026-06-26 — Phase 17: Repo hygiene + untested core module coverage (265 tests)
+- Removed `src/index.ts.bak` from git; added `*.bak` to `.gitignore`
+- Added `typecheck` and `verify` scripts to package.json
+- Exported `inferLinkType` from memory-graph.ts for testability
+- 41 new tests: memory-graph (8), concept-extractor (18), priming-engine (15)
+
+### 2026-06-26 — Lesson-recall integration (224 tests)
+- `AlchemistLesson` gains required `confidence` and `retention` fields
+- `AlchemistEngine.store(lessons)` — bulk load for direct lesson injection
+- `CompileResult.injectedLessons` — exposes which lessons were actually injected
+- `rankLessons` filters by confidence >= 0.5
+- `compileContextWithLessons()` closes the loop: past lesson → matching future task → injected into context
+- 10 new integration tests

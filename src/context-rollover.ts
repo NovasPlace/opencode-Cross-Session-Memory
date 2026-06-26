@@ -177,11 +177,12 @@ export async function performRollover(
   pool: DatabasePool,
   sessionId: string,
   messages: any[],
+  rawTotalTokens: number,
   cfg: RolloverConfig,
   redactor?: Redactor,
 ): Promise<RolloverResult> {
   const record = await getRolloverRecord(pool, sessionId);
-  const currentPromptTokens = estimateTokens(extractAllText(messages));
+  const currentPromptTokens = rawTotalTokens;
   const newCumulative = record.cumulative_tokens + currentPromptTokens;
 
   if (newCumulative < cfg.rolloverAtTotalSessionTokens) {

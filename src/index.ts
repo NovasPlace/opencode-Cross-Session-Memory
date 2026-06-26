@@ -387,6 +387,7 @@ export default async (
                 pool,
                 sid,
                 output.messages as any[],
+                rawTotalTokens,
                 config.contextRollover,
                 redactor,
               );
