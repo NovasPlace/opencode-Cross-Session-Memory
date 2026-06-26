@@ -561,6 +561,81 @@ export interface PruneConfig {
   threshold: number;
 }
 
+export type AlchemistLessonType =
+  | 'verified_pattern'
+  | 'anti_pattern'
+  | 'repair_recipe'
+  | 'risk_rule'
+  | 'validation_checklist'
+  | 'procedure';
+
+export type AlchemistSource =
+  | 'repo_scan'
+  | 'session_trace'
+  | 'test_failure'
+  | 'system_map'
+  | 'agent_session'
+  | 'tool_trace'
+  | 'verification_result';
+
+export interface AlchemistIngest {
+  source: AlchemistSource;
+  content: string;
+  metadata: Record<string, unknown>;
+  timestamp: Date;
+}
+
+export interface ExtractedCapability {
+  name: string;
+  type: 'feature' | 'pattern' | 'anti_pattern' | 'gap' | 'risk' | 'risk_rule';
+  evidence: string;
+  file?: string;
+  line?: number;
+  confidence: number;
+}
+
+export interface AlchemistLesson {
+  id: string;
+  type: AlchemistLessonType;
+  title: string;
+  description: string;
+  trigger: string;
+  action: string;
+  evidence: string[];
+  source: AlchemistSource;
+  verified: boolean;
+  verificationCount: number;
+  lastVerified?: Date;
+  createdAt: Date;
+  tags: string[];
+}
+
+export interface Blueprint {
+  id: string;
+  lessons: string[];
+  procedures: string[];
+  riskRules: string[];
+  targetContext: string;
+  generatedAt: Date;
+}
+
+export interface GapReport {
+  systemName: string;
+  capabilities: string[];
+  missing: ExtractedCapability[];
+  risks: ExtractedCapability[];
+  antipatterns: ExtractedCapability[];
+  gaps: ExtractedCapability[];
+}
+
+export interface AlchemistConfig {
+  organismManifest: string[];
+  verificationThreshold: number;
+  maxLessons: number;
+  autoVerify: boolean;
+  recallTopK: number;
+}
+
 export const DEFAULT_PRUNE_CONFIG: PruneConfig = {
   dryRun: true,
   maxAgeDays: 90,
