@@ -6,6 +6,7 @@
 
 | File | Exports | Type | Role |
 |------|---------|------|------|
+| `src/benchmark.ts` | authenticate, runBenchmarkSuite | source | Module |
 | `src/redactor.ts` | RedactCategory, PathMode, RedactorConfig, RedactionAudit, RedactionResult, DEFAULT_REDACTOR_CONFIG, Redactor, redact, redactObject | source | Module |
 | `src/alchemist.ts` | DEFAULT_ALCHEMIST_CONFIG, AlchemistEngine | source | Module |
 | `src/types/opentui.d.ts` | createSignal, createEffect, onCleanup, createMemo, onMount, h, jsx, jsxs, Fragment, RGBA, Renderable, KeyEvent, SlotMode, CliRenderer, JSX, SolidPlugin, Binding, Keymap, KeyLike, KeySequencePart, KeyStringifyInput, StringifyOptions, stringifyKeySequence, stringifyKeyStroke, BindingConfig, BindingLookup, BindingValue, createBindingLookup, formatCommandBindings, formatKeySequence | types | Module |

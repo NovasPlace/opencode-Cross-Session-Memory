@@ -2,6 +2,14 @@
 
 ## Development Log
 
+### 2026-06-26 — Phase 19: Reproducible benchmark harness (305 tests, all green)
+- `src/benchmark.ts` — standalone benchmark module with long-session simulation
+- 877-message synthetic session (alternating user/assistant/tool-output turns)
+- Metrics: baseline vs optimized tokens, reduction %, context multiplier, tool-output dominance, evidence signals retained, redaction audit
+- Result: 591K → 49K tokens (91.6% reduction, 11.9x multiplier)
+- `benchmark:long-session` script in package.json
+- Build + full test suite green
+
 ### 2026-06-26 — Phase 18b: Fix context-rollover failures (305 tests, all green)
 - Restored `performRollover` original signature `(pool, sessionId, messages, rawTotalTokens, cfg, redactor?)`
 - Phase 18 redactor wiring had shifted parameter order, breaking 6 rollover tests

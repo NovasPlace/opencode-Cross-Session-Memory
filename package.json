@@ -22,7 +22,8 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "test": "npx tsx --test test/*.test.ts",
-    "verify": "npm run build && npm run typecheck && npx tsx --test test/*.test.ts"
+    "verify": "npm run build && npm run typecheck && npx tsx --test test/*.test.ts",
+    "benchmark:long-session": "npx tsx src/benchmark.ts"
   },
   "dependencies": {
     "@opencode-ai/plugin": "1.17.0",
