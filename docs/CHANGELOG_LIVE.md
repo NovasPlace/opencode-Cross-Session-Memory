@@ -20,9 +20,39 @@ After checkpoint expansion + hybrid search recovery:
   875–877 messages | ~16–20K tokens | 12–15% context
 ```
 
-Key insight: **Tool outputs are 87% of context bloat** — not chat history.
+**Benchmark proof (simulated 877-message session):**
+
+```
+=== BEFORE COMPACTION ===
+  Tool outputs:  136,018 tokens  (96.6%)
+    ├ Pinned:    136,018 tokens  (96.6%)
+    └ Compressed:      0 tokens  (0.0%)
+  User messages:      660 tokens  (0.5%)
+  Assistant text:   4,096 tokens  (2.9%)
+  TOTAL:          140,774 tokens
+  Context usage:            703.9%
+
+=== AFTER COMPACTION ===
+  Tool outputs:   15,010 tokens  (75.9%)
+    ├ Pinned:    13,525 tokens  (68.4%)  ← recent window (raw)
+    └ Compressed: 1,485 tokens  (7.5%)   ← compacted summaries
+  User messages:      660 tokens  (3.3%)
+  Assistant text:   4,096 tokens  (20.7%)
+  TOTAL:           19,766 tokens
+  Context usage:             98.8%
+
+  86.0% token reduction
+  20.7pp reduction in tool-output dominance
+  123 parts compressed
+```
+
+Key insight: **Tool outputs are 87–97% of context bloat** — not chat history.
 The remaining gap was short tool outputs (<100 tokens) that the classifier
 treated as non-compressible. Fix: make stale short tool outputs compressible.
+
+The 68.4% "pinned" after compaction is the recent window (last 10 turns)
+kept raw for continuity — this is correct behavior. The compressed summaries
+are only 7.5% of total, proving compaction is highly effective.
 
 Changes:
 - Fixed `context-compiler.ts` classifier: short tool outputs now compressible when stale
