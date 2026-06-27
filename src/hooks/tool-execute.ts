@@ -157,6 +157,7 @@ async function logToolUsage(
   const significantTools = [
     'read', 'write', 'edit', 'glob', 'grep', 'bash', 'task',
     'memory_save', 'memory_search', 'memory_lesson',
+    'csm_memory_save', 'csm_memory_search', 'csm_memory_lesson',
   ];
 
   if (significantTools.includes(input.tool)) {

@@ -13,6 +13,21 @@ import { Database } from './database.js';
 import type { Redactor } from './redactor.js';
 import { listMemoriesOp, saveMemoryOp, searchMemoriesOp } from './bridge-ops.js';
 
+const CSM_TOOL_NAMES = [
+  'csm_memory_save',
+  'csm_memory_search',
+  'csm_memory_list',
+  'csm_memory_delete',
+  'csm_memory_context',
+  'csm_memory_lesson',
+  'csm_memory_transcript',
+  'csm_memory_distill',
+  'csm_memory_distilled_view',
+  'csm_memory_compact',
+  'csm_memory_backfill_embeddings',
+  'csm_runtime_status',
+] as const;
+
 /**
  * memory_save - Save information to cross-session memory
  */
@@ -61,7 +76,7 @@ export function memorySaveTool(memoryManager: MemoryManager) {
  */
 export function memorySearchTool(memoryManager: MemoryManager, primingEngine: PrimingEngine) {
   return tool({
-    description: 'Search cross-session memories using semantic similarity. Find related context from previous conversations.',
+    description: 'Search cross-session memories using semantic similarity when prior context would materially help answer the user. Do not use for simple greetings or small talk.',
     args: {
       query: tool.schema.string().describe('Search query'),
       type: tool.schema.enum(['conversation', 'workspace', 'repo', 'preference', 'lesson']).optional().describe('Filter by memory type'),
@@ -149,7 +164,7 @@ export function memoryDeleteTool(memoryManager: MemoryManager) {
  */
 export function memoryContextTool(contextRecall: ContextRecallDaemon) {
   return tool({
-    description: 'Get the current context brief for this session, including distilled tool activity, episodic, procedural, and semantic memories.',
+    description: 'Get the current context brief for this session when the user explicitly asks about memory or prior context. Do not use for simple greetings or small talk.',
     args: {},
     async execute(args, context) {
       const contextBrief = await contextRecall.getContextBrief();
@@ -270,7 +285,7 @@ export function memoryLessonTool(memoryManager: MemoryManager) {
  */
 export function memoryListTool(memoryManager: MemoryManager) {
   return tool({
-    description: 'List memories with optional filtering by session, type, tags, entities, and date range.',
+    description: 'List memories with optional filtering by session, type, tags, entities, and date range when the user asks to inspect memory. Do not use for simple greetings or small talk.',
     args: {
       sessionId: tool.schema.string().optional().describe('Filter by session ID'),
       projectId: tool.schema.string().optional().describe('Filter by project ID'),
@@ -742,3 +757,55 @@ export function memoryCompactTool(contextCompactor: ContextCompactor) {
     },
   });
 }
+
+/**
+ * csm_runtime_status - Diagnostic tool to verify plugin tool exposure
+ */
+export function runtimeStatusTool(
+  database: Database,
+  memoryManager: MemoryManager,
+  config: { fullTranscripts?: boolean },
+  currentSessionId: string | null,
+) {
+  return tool({
+    description: 'Diagnostic tool to verify cross-session memory plugin runtime status, tool registration, and database connectivity.',
+    args: {},
+    async execute(args, context) {
+      let databaseConnected = false;
+      let postgresMemoryCount = 0;
+      
+      try {
+        const pool = database.getPool();
+        databaseConnected = true;
+        const countResult = await pool.query('SELECT COUNT(*) as count FROM memories');
+        postgresMemoryCount = parseInt((countResult.rows[0] as Record<string, unknown>).count as string, 10);
+      } catch {
+        databaseConnected = false;
+      }
+
+      return {
+        title: 'CSM Runtime Status',
+        output: JSON.stringify({
+          plugin_loaded: true,
+          database_connected: databaseConnected,
+          registered_csm_tools: CSM_TOOL_NAMES,
+          tool_namespace: 'csm_',
+          postgres_memory_count: postgresMemoryCount,
+          current_session_id: context.sessionID ?? currentSessionId,
+          memory_runtime_enabled: config.fullTranscripts ?? true,
+        }, null, 2),
+        metadata: {
+          plugin_loaded: true,
+          database_connected: databaseConnected,
+          registered_csm_tools: CSM_TOOL_NAMES,
+          tool_namespace: 'csm_',
+          postgres_memory_count: postgresMemoryCount,
+          current_session_id: context.sessionID ?? currentSessionId,
+          memory_runtime_enabled: config.fullTranscripts ?? true,
+        },
+      };
+    },
+  });
+}
+
+export { CSM_TOOL_NAMES };

@@ -8,7 +8,11 @@ This plugin gives an AI assistant long-term memory. Without it, every new sessio
 
 ### Memory System
 - **Cross-session persistence** - Memories are stored in PostgreSQL and survive session restarts. Every session can recall, search, and build on knowledge from prior sessions.
-- **Host-neutral bridge path** - The Postgres memory core can now be reached from OpenCode or from the Codex bridge export without rewriting `MemoryManager`.
+- **Host-neutral bridge path** - The Postgres memory core can be reached from OpenCode or from the Codex bridge export without rewriting `MemoryManager`.
+- **csm_ tool namespace** - All memory tools are now prefixed `csm_` (e.g. `csm_memory_save`, `csm_memory_search`) to avoid collisions with host tool registries. A `csm_runtime_status` diagnostic tool is included.
+- **Prompt message normalization** - Sanitizes prompt messages to valid SDK chat roles (user/assistant/tool), converts system messages to assistant, and drops invalid messages before context compilation.
+- **Cascade search fallback** - Search and list operations cascade through `project → legacy → global` modes when the primary mode returns zero results.
+- **Text search fallback** - If vector search fails (e.g. missing embeddings), a `LIKE`-based text search fallback activates automatically.
 - **Automatic memory extraction** - After every assistant turn, raw conversation text is distilled into structured semantic memories with no user effort.
 - **Memory types** - `conversation`, `workspace`, `repo`, `preference`, `lesson`, `episodic`, and `procedural`.
 - **Hybrid search** - Queries use Reciprocal Rank Fusion across vector similarity, full-text search, and entity matching.
@@ -35,6 +39,20 @@ This plugin gives an AI assistant long-term memory. Without it, every new sessio
 - **7 growth categories**: loop_prevention, schema_lesson_application, boundary_adherence, causal_depth_improvement, repo_fact_reuse, drift_correction, hydration_depth_improvement.
 - **Growth metrics**: event count, category breakdown, baseline comparison, overall growth score.
 - **Proof target**: "The system grows from what it remembers" — not just "the system remembers."
+
+### Cross-Session Causal Stitching (Phase 31)
+- **No silent continuity inference** - Every cross-session edge is labeled `direct`, `inferred`, or `gap`; missing proof is preserved instead of smoothed over.
+- **Dedicated stitch graph** - `cross_session_causal_links` stores cross-session causal edges with confidence, evidence anchors, gap kinds, and metadata.
+- **Failure-to-growth chain** - Stitches `failure → diagnosis → correction → lesson → later recall → changed behavior → improvement signal`.
+- **Canonical proof chain** - Ships a deterministic Session D → Session E → Phase 22 → 23 → 24 → 25 → 26 → 27 stitching path with explicit gap preservation.
+- **Narrative integration** - `PhaseNarrativeBuilder` now includes cross-session links and measurable growth evidence in injection text.
+- **Deep continuity injection** - When the user asks about continuity/memory/identity, hydrated records, causal threads, failure traces, and phase causation chains are injected directly into the system prompt.
+- **Greeting/workspace guard** - Simple greetings and workspace-fact queries are detected at the system transform hook to prevent unnecessary memory tool calls.
+
+### Schema Refactor
+- **Declarative schema pipeline** - `database.ts` inlined schema was extracted into `src/schema/` with per-subsystem files (`core-schema.ts`, `memory-schema.ts`, `session-schema.ts`, `project-isolation-schema.ts`).
+- **Step-by-step init with error isolation** - `initializeAllSchemas` runs each schema step in order, logging failures instead of aborting the entire init.
+- **Narrative refactor** - `PhaseNarrativeBuilder` internals moved to `self-continuity-narrative-format.ts`, `self-continuity-narrative-canonical.ts`, and `self-continuity-narrative-types.ts` for separation of concerns.
 
 ### Response Mode Selector (Phase 29)
 - **Adaptive depth** - Auto-selects 'basic' (boundary-only) or 'deep' (boundary + evidence + causal chain + narrative arc) based on available hydration context.
@@ -99,7 +117,7 @@ This plugin gives an AI assistant long-term memory. Without it, every new sessio
 
 ## Test Suite
 
-Current source of truth is the test runner output. The suite includes fresh-schema and Phase 19b integration coverage for clean installs, explicit backfill, and hashed recall telemetry. 133 tests total across 18 suites.
+Current source of truth is the test runner output. The suite includes fresh-schema and Phase 19b integration coverage for clean installs, explicit backfill, and hashed recall telemetry, and it continues to grow as new phases land.
 
 | Suite | What It Covers |
 |-------|----------------|
@@ -112,6 +130,11 @@ Current source of truth is the test runner output. The suite includes fresh-sche
 | `auto-docs` | Documentation queueing, flush, and reconciliation |
 | `self-continuity` | Self-continuity records: schema, generator, injection modes, confidence weighting |
 | `self-drift-tracker` | Self-model drift tracking: 5-dimension stability metric, A/D/E anchor fixtures |
+| `cross-session-causal-stitcher` | Cross-session causal stitching: failure-to-growth chains, canonical proof chain, gap preservation |
+| `cross-session-causal-store` | Cross-session causal store: link CRUD, session lookup |
+| `bridge-ops` | Bridge operations: search cascade, list cascade, context brief |
+| `prompt-message-sanitizer` | Prompt normalization: system message conversion, invalid message dropping |
+| `system-transform-greeting` | Greeting/workspace-fact detection in system transform hook |
 
 Run everything:
 
@@ -142,3 +165,38 @@ Import `./codex-bridge` to expose the existing memory harness to Codex-facing co
 - `get_compaction_report`
 
 `get_context_brief` is the primary entry point for a fresh Codex task. It creates or reuses a bridge session for the project root, refreshes context, and returns the compact brief plus relevant lessons and active risks.
+
+## Codex MCP Server
+
+`src/codex-mcp-server.ts` exposes the bridge as a JSON-RPC MCP server for Codex or other MCP clients. Configure via `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "cross-session-memory-bridge": {
+      "cwd": ".",
+      "command": "node",
+      "args": ["./dist/codex-mcp-server.js"]
+    }
+  }
+}
+```
+
+## csm_ Tool Namespace
+
+All memory tools are registered with the `csm_` prefix to avoid collisions:
+
+| Tool | Description |
+|------|-------------|
+| `csm_memory_save` | Save information to cross-session memory |
+| `csm_memory_search` | Semantic search across memories |
+| `csm_memory_list` | List memories with filters |
+| `csm_memory_delete` | Delete a memory by ID |
+| `csm_memory_context` | Get current session context brief |
+| `csm_memory_lesson` | Save a lesson learned |
+| `csm_memory_transcript` | Get conversation transcript |
+| `csm_memory_distill` | Distill recent tool-call activity |
+| `csm_memory_distilled_view` | View distilled summaries |
+| `csm_memory_compact` | Report on compaction savings |
+| `csm_memory_backfill_embeddings` | Repair missing embeddings |
+| `csm_runtime_status` | Diagnostic: plugin status, DB connectivity, tool registry |

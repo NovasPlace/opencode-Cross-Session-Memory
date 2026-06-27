@@ -239,8 +239,11 @@ describe('performRollover (DB integration)', () => {
     assert.ok(result.messages.length < msgs.length, `messages reduced: ${result.messages.length} < ${msgs.length}`);
     assert.ok(result.briefTokens > 0, 'brief was generated');
     assert.ok(result.archivedTokens > 0, 'old messages archived');
-    // First message should be the brief (system role)
-    assert.equal(result.messages[0].info?.role, 'system', 'first message is system brief');
+    // First message should be the synthetic brief with a valid SDK chat role
+    assert.ok(
+      result.messages[0].info?.role === 'assistant' || result.messages[0].info?.role === 'user',
+      `first message has valid synthetic role: ${result.messages[0].info?.role}`,
+    );
     // Remaining messages should be recent turns
     const lastMsg = result.messages[result.messages.length - 1];
     assert.equal(lastMsg.info?.role, 'assistant', 'last message is assistant');
@@ -291,8 +294,8 @@ describe('performRollover (DB integration)', () => {
     assert.equal(result.rolloverTriggered, true, 'rollover triggered');
 
     const transformed = result.messages;
-    // Brief is a system message
-    assert.equal(transformed[0].info?.role, 'system');
+    // Brief uses a valid SDK chat role
+    assert.ok(transformed[0].info?.role === 'assistant' || transformed[0].info?.role === 'user');
     assert.ok(transformed[0].parts?.length === 1, 'brief has exactly 1 part');
     assert.equal(transformed[0].parts![0].type, 'text', 'brief part is text');
     // Rest of messages have valid roles
@@ -307,6 +310,7 @@ describe('performRollover (DB integration)', () => {
     for (let i = 1; i < transformed.length; i++) {
       const prev = transformed[i - 1].info?.role;
       const curr = transformed[i].info?.role;
+      if (i === 1 && prev !== 'user' && prev !== 'assistant') continue;
       assert.ok(
         !(prev === 'user' && curr === 'user'),
         `no consecutive user messages at ${i - 1},${i}`,

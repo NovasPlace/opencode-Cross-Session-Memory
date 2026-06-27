@@ -131,6 +131,7 @@ export function analyzeMessages(
 export function estimateSystemPrompt(systemParts: string[]): number {
   let total = 0;
   for (const part of systemParts) {
+    if (typeof part !== "string") continue;
     total += estimateTokens(part);
   }
   return total;

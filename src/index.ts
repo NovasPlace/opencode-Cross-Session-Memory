@@ -25,6 +25,8 @@ import { logCompilation } from './context-compilation-log.js';
 import { contextFetchTool, contextSearchTool, contextFetchFileRegionTool, contextFetchLastErrorTool, contextFetchDecisionLogTool } from './context-cache-tools.js';
 import { cacheOldContext } from './context-cache-runtime.js';
 import { performRollover, type RolloverResult } from './context-rollover.js';
+import { normalizePromptMessages } from './prompt-message-sanitizer.js';
+import { writePromptDebugLog } from './prompt-debug-log.js';
 import { goalSetTool, goalUpdateTool, goalListTool } from './goal-tools.js';
 import {
   estimateTokens,
@@ -47,6 +49,7 @@ import {
   memoryCompactTool,
 } from './tools.js';
 import { memoryBackfillEmbeddingsTool } from './maintenance-tools.js';
+import { runtimeStatusTool, CSM_TOOL_NAMES } from './tools.js';
 import { PluginConfig, ToolCallRecord, CompactionResult } from './types.js';
 import { CheckpointStore } from './checkpoint-store.js';
 import { createCheckpointTool, expandCheckpointRefTool, listCheckpointsTool, type CheckpointToolDeps } from './checkpoint-tool.js';
@@ -96,6 +99,7 @@ export default async (
   let currentSessionId: string | null = null;
   let messageCount = 0;
   const capturedMessageSizes = new Map<string, number>();
+  const recentUserMessages = new Map<string, string>();
 
   const projectId = ctx.directory;
 
@@ -159,6 +163,7 @@ export default async (
       get currentSessionId() { return currentSessionId; },
       get messageCount() { return messageCount; },
       capturedMessageSizes,
+      recentUserMessages,
     },
   };
 
@@ -313,6 +318,7 @@ export default async (
           if (part.type === 'text' && 'text' in part) {
             const content = (part as { text: string }).text;
             if (!content || content.length === 0) continue;
+            recentUserMessages.set(input.sessionID, content);
 
             const msgId = output.message?.id ?? `user_${Date.now()}`;
             if (capturedMessageSizes.has(msgId)) continue;
@@ -351,6 +357,28 @@ export default async (
     'experimental.chat.messages.transform': async (input, output) => {
       try {
         if (!output.messages || output.messages.length === 0) return;
+
+        writePromptDebugLog(ctx.directory, 'before-normalization', output.messages as { info?: any; parts?: any[] }[], {
+          currentSessionId,
+        });
+
+        const normalization = normalizePromptMessages(output.messages as { info?: any; parts?: any[] }[], {
+          cwd: ctx.directory,
+          root: ctx.worktree ?? ctx.directory,
+          sessionID: (output.messages[0] as any)?.info?.sessionID ?? currentSessionId ?? 'unknown',
+        });
+        if (normalization.convertedSystemMessages > 0 || normalization.droppedMessages > 0) {
+          console.log(
+            `[CrossSessionMemory] Prompt normalization: converted=${normalization.convertedSystemMessages} dropped=${normalization.droppedMessages}`,
+          );
+        }
+        output.messages = normalization.messages as any;
+        writePromptDebugLog(ctx.directory, 'after-normalization', output.messages as { info?: any; parts?: any[] }[], {
+          currentSessionId,
+          convertedSystemMessages: normalization.convertedSystemMessages,
+          droppedMessages: normalization.droppedMessages,
+        });
+        if (output.messages.length === 0) return;
 
         // ── Token bucket: count ALL raw tokens BEFORE any compaction ──
         let rawToolTokens = 0;
@@ -616,6 +644,10 @@ export default async (
           },
           sessionId: info.sessionID,
         });
+
+        writePromptDebugLog(ctx.directory, 'before-return', output.messages as { info?: any; parts?: any[] }[], {
+          currentSessionId,
+        });
       } catch (error) {
         console.error('[CrossSessionMemory] Messages transform error:', error);
       }
@@ -634,19 +666,20 @@ export default async (
     'tool.execute.before': createToolExecuteBeforeHook(pluginCtx),
     'tool.execute.after': createToolExecuteAfterHook(pluginCtx),
 
-    // ==================== Custom Tools ====================
+// ==================== Custom Tools ====================
     tool: {
-      memory_save: memorySaveTool(memoryManager),
-      memory_search: memorySearchTool(memoryManager, primingEngine),
-      memory_list: memoryListTool(memoryManager),
-      memory_delete: memoryDeleteTool(memoryManager),
-      memory_context: memoryContextTool(contextRecall),
-      memory_lesson: memoryLessonTool(memoryManager),
-      memory_transcript: memoryTranscriptTool(memoryManager),
-      memory_distill: memoryDistillTool(toolDistiller, database, memoryExtractor, redactor),
-      memory_distilled_view: memoryDistilledViewTool(database),
-      memory_compact: memoryCompactTool(contextCompactor),
-      memory_backfill_embeddings: memoryBackfillEmbeddingsTool(memoryManager),
+      csm_memory_save: memorySaveTool(memoryManager),
+      csm_memory_search: memorySearchTool(memoryManager, primingEngine),
+      csm_memory_list: memoryListTool(memoryManager),
+      csm_memory_delete: memoryDeleteTool(memoryManager),
+      csm_memory_context: memoryContextTool(contextRecall),
+      csm_memory_lesson: memoryLessonTool(memoryManager),
+      csm_memory_transcript: memoryTranscriptTool(memoryManager),
+      csm_memory_distill: memoryDistillTool(toolDistiller, database, memoryExtractor, redactor),
+      csm_memory_distilled_view: memoryDistilledViewTool(database),
+      csm_memory_compact: memoryCompactTool(contextCompactor),
+      csm_memory_backfill_embeddings: memoryBackfillEmbeddingsTool(memoryManager),
+      csm_runtime_status: runtimeStatusTool(database, memoryManager, config, currentSessionId),
       // Phase 4A — Durable session checkpointing
       create_checkpoint: createCheckpointTool(checkpointToolDeps),
         expand_checkpoint_ref: expandCheckpointRefTool(checkpointToolDeps),

@@ -21,7 +21,7 @@ const FILE_PATH_REGEX = /(?:src|lib|test|app)\/[a-zA-Z0-9_\-./]+\.(ts|js|tsx|jsx
 const FUNCTION_REGEX = /\b(?:function|const|let|var|async\s+function|export\s+(?:async\s+)?function|export\s+const)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
 const ERROR_REGEX = /(?:Error|Exception|Fail|Failed|panic|crash|traceback|stack trace)[:\s]+([^\n]{10,200})/gi;
 const DECISION_KEYWORDS = ["decided", "decision", "chose", "selected", "picked", "will use", "going to use", "switching to", "migrating to", "adopted", "replaced with"];
-const TOOL_PATTERNS = ["memory_search", "memory_save", "memory_recall", "context_compact", "checkpoint_create", "checkpoint_list", "auto_docs"];
+const TOOL_PATTERNS = ["memory_search", "memory_save", "memory_recall", "context_compact", "checkpoint_create", "checkpoint_list", "auto_docs", "csm_memory_search", "csm_memory_save", "csm_memory_list", "csm_memory_context", "csm_memory_lesson", "csm_memory_transcript", "csm_memory_distill", "csm_memory_distilled_view", "csm_memory_compact"];
 
 export function extractConcepts(text: string, sessionId?: string): ExtractionResult {
   const concepts: ExtractedConcept[] = [];

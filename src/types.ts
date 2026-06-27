@@ -681,6 +681,13 @@ export interface SelfContinuityConfig {
   confidenceWeights: SelfContinuityConfidenceWeights;
   injectionTriggers: string[];
   injectionMode: 'silent' | 'instrumented';
+  deepContinuity?: {
+    enabled: boolean;
+    maxThreadsToInject: number;
+    maxInjectTokens: number;
+    triggerKeywords: string[];
+    injectionMode: 'deep' | 'deep-silent';
+  };
 }
 
 export const DEFAULT_PRUNE_CONFIG: PruneConfig = {

@@ -383,16 +383,23 @@ async saveMemory(options: MemorySaveOptions): Promise<Memory> {
     sql += ` ORDER BY similarity DESC LIMIT $${paramIndex}`;
     params.push(options.limit ?? 10);
 
-    const result = await pool.query(sql, params);
-    const memories: { memory: Memory; score: number }[] = [];
-    for (const row of result.rows) {
-      const memory = this.mapMemory(row as Record<string, unknown>);
-      const score = (row as Record<string, unknown>).similarity as number;
-      await this.touchMemory(memory.id);
-      memories.push({ memory, score });
+    try {
+      const result = await pool.query(sql, params);
+      const memories: { memory: Memory; score: number }[] = [];
+      for (const row of result.rows) {
+        const memory = this.mapMemory(row as Record<string, unknown>);
+        const score = (row as Record<string, unknown>).similarity as number;
+        await this.touchMemory(memory.id);
+        memories.push({ memory, score });
+      }
+      await this.recordRecalls(memories, options.query, options.projectId, telemetry);
+      return memories;
+    } catch (err) {
+      console.warn('[MemoryManager] Vector search failed, falling back to text search:', err);
+      const memories = await this.textSearchFallback(options);
+      await this.recordRecalls(memories, options.query, options.projectId, telemetry);
+      return memories;
     }
-    await this.recordRecalls(memories, options.query, options.projectId, telemetry);
-    return memories;
   }
 
   /**
@@ -483,6 +490,62 @@ async saveMemory(options: MemorySaveOptions): Promise<Memory> {
       options.projectId,
       telemetry,
     );
+    return memories;
+  }
+
+  private async textSearchFallback(
+    options: MemorySearchOptions,
+  ): Promise<{ memory: Memory; score: number }[]> {
+    const pool = this.database.getPool();
+    const like = `%${options.query}%`;
+    let sql = `
+      SELECT *
+      FROM memories
+      WHERE content ILIKE $1
+    `;
+    const params: unknown[] = [like];
+    let paramIndex = 2;
+    const searchMode = options.searchMode ?? 'project';
+
+    if (searchMode === 'project' && options.projectId) {
+      sql += ` AND project_id = $${paramIndex}`;
+      params.push(options.projectId);
+      paramIndex++;
+    } else if (searchMode === 'legacy') {
+      if (options.projectId) {
+        sql += ` AND (project_id = $${paramIndex} OR project_id IS NULL)`;
+        params.push(options.projectId);
+        paramIndex++;
+      } else {
+        sql += ' AND project_id IS NULL';
+      }
+    }
+    if (options.type) {
+      sql += ` AND memory_type = $${paramIndex}`;
+      params.push(options.type);
+      paramIndex++;
+    }
+    if (options.minImportance !== undefined) {
+      sql += ` AND importance >= $${paramIndex}`;
+      params.push(options.minImportance);
+      paramIndex++;
+    }
+    if (options.tags && options.tags.length > 0) {
+      sql += ` AND tags && $${paramIndex}`;
+      params.push(options.tags);
+      paramIndex++;
+    }
+
+    sql += ` ORDER BY importance DESC, created_at DESC LIMIT $${paramIndex}`;
+    params.push(options.limit ?? 10);
+
+    const result = await pool.query(sql, params);
+    const memories: { memory: Memory; score: number }[] = [];
+    for (const row of result.rows) {
+      const memory = this.mapMemory(row as Record<string, unknown>);
+      await this.touchMemory(memory.id);
+      memories.push({ memory, score: memory.importance });
+    }
     return memories;
   }
 

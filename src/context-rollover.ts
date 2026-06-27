@@ -20,7 +20,7 @@ import {
 } from './context-rollover-schema.js';
 
 interface MessageLike {
-  info?: { role?: string; sessionID?: string };
+  info?: Record<string, unknown> & { role?: string; sessionID?: string };
   parts?: any[];
 }
 
@@ -106,10 +106,61 @@ async function archiveOldMessages(
   return archivedTokens;
 }
 
-function buildBriefMessage(sessionId: string, briefText: string): MessageLike {
+function cloneSyntheticPart(template: any, briefText: string, sessionId: string, messageId: string): any {
+  if (template?.type === 'text') {
+    return {
+      type: 'text',
+      id: `${messageId}-brief`,
+      sessionID: sessionId,
+      messageID: messageId,
+      text: briefText,
+      synthetic: true,
+      metadata: {
+        contextRolloverBrief: true,
+      },
+    };
+  }
   return {
-    info: { role: 'system', sessionID: sessionId },
-    parts: [{ type: 'text', text: briefText }],
+    id: `${messageId}-brief`,
+    sessionID: sessionId,
+    messageID: messageId,
+    type: 'text',
+    text: briefText,
+    synthetic: true,
+    metadata: { contextRolloverBrief: true },
+  };
+}
+
+function buildBriefMessage(sessionId: string, briefText: string, recentMessages: MessageLike[]): MessageLike {
+  const template = recentMessages.find((msg) => msg.info?.role === 'assistant');
+  const baseInfo = template?.info
+    ? { ...template.info }
+    : {
+      role: 'assistant',
+      sessionID: sessionId,
+      time: { created: Date.now() },
+      parentID: '',
+      modelID: 'synthetic',
+      providerID: 'synthetic',
+      mode: 'default',
+      agent: 'cross-session-memory',
+      path: { cwd: '', root: '' },
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    };
+  const messageId = `${sessionId}-rollover-brief-${Date.now()}`;
+  const partTemplate = template?.parts?.find((part) => part?.type === 'text')
+    ?? recentMessages.find((msg) => msg.info?.role === 'user')?.parts?.find((part) => part?.type === 'text');
+  return {
+    info: {
+      ...baseInfo,
+      id: messageId,
+      role: 'assistant',
+      sessionID: sessionId,
+      time: { created: Date.now() },
+      summary: undefined,
+    },
+    parts: [cloneSyntheticPart(partTemplate, briefText, sessionId, messageId)],
   };
 }
 
@@ -148,7 +199,7 @@ async function executeRollover(
 
   const archivedTokens = await archiveOldMessages(pool, sessionId, oldMessages);
   const brief = buildContinuationBrief(oldMessages, config, sessionId);
-  const briefMessage = buildBriefMessage(sessionId, brief.text);
+  const briefMessage = buildBriefMessage(sessionId, brief.text, recentMessages);
   const newMessages = [briefMessage, ...recentMessages];
   const newPromptTokens = estimateMessageTokens(newMessages);
   const failClosed = newPromptTokens > config.failClosedOverInputTokens;

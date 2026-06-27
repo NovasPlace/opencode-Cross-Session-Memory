@@ -44,10 +44,24 @@ export async function searchMemoriesOp(
   input: MemorySearchOptions,
   context: BridgeContext = {},
 ): Promise<{ results: Awaited<ReturnType<MemoryManager['searchMemories']>>; cascaded: Memory[] }> {
-  const results = await deps.memoryManager.searchMemories(
-    { ...input, projectId: input.projectId ?? context.projectId },
-    context.sessionId ? { sessionId: context.sessionId, source: 'search' } : undefined,
+  const projectId = input.projectId ?? context.projectId;
+  const telemetry = context.sessionId ? { sessionId: context.sessionId, source: 'search' as const } : undefined;
+  let results = await deps.memoryManager.searchMemories(
+    { ...input, projectId, searchMode: input.searchMode ?? (projectId ? 'project' : 'global') },
+    telemetry,
   );
+  if (results.length === 0 && projectId) {
+    results = await deps.memoryManager.searchMemories(
+      { ...input, projectId, searchMode: 'legacy' },
+      telemetry,
+    );
+  }
+  if (results.length === 0 && projectId) {
+    results = await deps.memoryManager.searchMemories(
+      { ...input, projectId: undefined, searchMode: 'global' },
+      telemetry,
+    );
+  }
   const ids = results.slice(0, 3).map((row) => row.memory.id);
   const cascaded = ids.length > 0
     ? (await deps.primingEngine.cascadeFromMultiple(ids)).memories
@@ -60,10 +74,25 @@ export async function listMemoriesOp(
   input: Parameters<MemoryManager['listMemories']>[0] = {},
   context: BridgeContext = {},
 ): Promise<Memory[]> {
-  return deps.memoryManager.listMemories(
-    { ...input, projectId: input.projectId ?? context.projectId },
-    context.sessionId ? { sessionId: context.sessionId, source: 'list' } : undefined,
+  const projectId = input.projectId ?? context.projectId;
+  const telemetry = context.sessionId ? { sessionId: context.sessionId, source: 'list' as const } : undefined;
+  let memories = await deps.memoryManager.listMemories(
+    { ...input, projectId, searchMode: input.searchMode ?? (projectId ? 'project' : 'global') },
+    telemetry,
   );
+  if (memories.length === 0 && projectId) {
+    memories = await deps.memoryManager.listMemories(
+      { ...input, projectId, searchMode: 'legacy' },
+      telemetry,
+    );
+  }
+  if (memories.length === 0 && projectId) {
+    memories = await deps.memoryManager.listMemories(
+      { ...input, projectId: undefined, searchMode: 'global' },
+      telemetry,
+    );
+  }
+  return memories;
 }
 
 export async function recallLessonsOp(

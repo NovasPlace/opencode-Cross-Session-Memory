@@ -4,10 +4,18 @@ import { estimateSystemPrompt, formatBreakdown, type BucketBreakdown } from '../
 import { buildManifest } from '../context-cache-manifest.js';
 import { getActiveGoal } from '../goal-schema.js';
 import { SelfContinuityGenerator } from '../self-continuity-generator.js';
+import { SelfContinuityIntegration } from '../self-continuity-integration.js';
+import { CrossSessionCausalStitcher } from '../cross-session-causal-stitcher.js';
+import { FailureTraceStore, formatFailureTraceForInjection } from '../failure-trace-store.js';
+import { CANONICAL_PHASES, CANONICAL_LINKS } from '../self-continuity-narrative-canonical.js';
+import { CANONICAL_STITCHES } from '../self-continuity-narrative-canonical.js';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 
 const TELEMETRY_LOG = join(process.env.HOME ?? process.env.USERPROFILE ?? '.', '.cross-session-memory', 'self-continuity-telemetry.jsonl');
+const PROMPT_INJECTION_DISABLE_ENV = 'CSM_DISABLE_PROMPT_INJECTION';
+const GREETING_TURN_RE = /^(hi|hello|hey|yo|sup|what'?s up|howdy|hiya|good morning|good afternoon|good evening)\b[!.? ]*$/i;
+const WORKSPACE_FACT_TURN_RE = /\b(phase\s+\d+|changelog|system map|readme|docs?|workspace|repo|repository|file|files|search the repo|search the workspace)\b/i;
 
 function logTelemetry(entry: Record<string, unknown>): void {
   try {
@@ -16,16 +24,182 @@ function logTelemetry(entry: Record<string, unknown>): void {
   } catch { /* telemetry write non-critical */ }
 }
 
+function normalizeSystemEntries(entries: unknown): string[] {
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .map((entry) => {
+      if (typeof entry === 'string') return entry;
+      if (entry == null) return '';
+      try {
+        return JSON.stringify(entry);
+      } catch {
+        return String(entry);
+      }
+    })
+    .filter((entry) => entry.length > 0);
+}
+
+export function isGreetingLikeTurn(text: string | undefined): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  return trimmed.length > 0 && trimmed.length <= 40 && GREETING_TURN_RE.test(trimmed);
+}
+
+export function isWorkspaceFactTurn(text: string | undefined): boolean {
+  if (!text) return false;
+  return WORKSPACE_FACT_TURN_RE.test(text);
+}
+
+async function fetchMemorySnapshot(ctx: PluginContext, limit: number): Promise<string[]> {
+  const pool = ctx.database.getPool();
+  const result = await pool.query(
+    `SELECT id, content, memory_type, importance, created_at, session_id, tags
+     FROM memories
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+  const lines: string[] = [];
+  for (const row of result.rows as any[]) {
+    const preview = row.content?.substring(0, 180)?.replace(/\n/g, ' ') ?? '(empty)';
+    const tags = row.tags?.length ? ` tags=[${row.tags.join(',')}]` : '';
+    const sess = row.session_id ? ` session=${row.session_id.slice(0, 8)}` : '';
+    lines.push(`  #${row.id} [${row.memory_type}] imp=${row.importance?.toFixed(2) ?? '?'}${tags}${sess} — ${preview}${row.content?.length > 180 ? '...' : ''}`);
+  }
+  return lines;
+}
+
+async function fetchRecentSessions(ctx: PluginContext, limit: number): Promise<string[]> {
+  const pool = ctx.database.getPool();
+  const result = await pool.query(
+    `SELECT s.id, s.created_at, s.updated_at,
+            (SELECT COUNT(*) FROM memories m WHERE m.session_id = s.id) as mem_count
+     FROM sessions s
+     ORDER BY s.updated_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+  const lines: string[] = [];
+  for (const row of result.rows as any[]) {
+    lines.push(`  Session ${row.id.slice(0, 8)} — ${row.mem_count} memories — updated ${new Date(row.updated_at).toLocaleString()}`);
+  }
+  return lines;
+}
+
+async function fetchLessons(ctx: PluginContext, limit: number): Promise<string[]> {
+  const pool = ctx.database.getPool();
+  const result = await pool.query(
+    `SELECT id, content, importance, created_at, session_id
+     FROM memories
+     WHERE memory_type = 'lesson'
+     ORDER BY importance DESC, created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+  const lines: string[] = [];
+  for (const row of result.rows as any[]) {
+    const preview = row.content?.substring(0, 200)?.replace(/\n/g, ' ') ?? '(empty)';
+    lines.push(`  #${row.id} imp=${row.importance?.toFixed(2) ?? '?'} session=${row.session_id?.slice(0, 8) ?? '?'} — ${preview}`);
+  }
+  return lines;
+}
+
 export function createSystemTransformHook(ctx: PluginContext) {
   return async (input: any, output: any): Promise<typeof output> => {
     try {
+      output.system = normalizeSystemEntries(output.system);
+      if (process.env[PROMPT_INJECTION_DISABLE_ENV] === '1') {
+        console.log('[CrossSessionMemory] Prompt injection disabled via CSM_DISABLE_PROMPT_INJECTION=1');
+        return output;
+      }
+
       ctx.syncActiveSession(input.sessionID);
+      const latestUserTurn = input.sessionID ? ctx.state.recentUserMessages.get(input.sessionID) : undefined;
+
+      output.system.unshift(
+        [
+          '[CROSS-SESSION MEMORY TOOL USE CONTRACT]',
+          '- Memory tools are optional support tools, not the default response path.',
+          '- Do not call memory tools for greetings, acknowledgements, pleasantries, or other low-context turns.',
+          '- When the user asks about repo facts, phases, docs, changelog items, or files in the current workspace, inspect the workspace first. Use memory tools only as a fallback when the answer is not in the repo.',
+          '- Do not narrate hidden reasoning, tool selection, or internal plans to the user.',
+          '- After any memory tool call, answer directly and naturally. Do not produce canned option menus unless the user explicitly asks for memory help or choices.',
+          '[/CROSS-SESSION MEMORY TOOL USE CONTRACT]',
+        ].join('\n'),
+      );
+      if (isGreetingLikeTurn(latestUserTurn)) {
+        output.system.unshift(
+          'Current user turn is a simple greeting. Reply briefly and warmly in plain language. Do not call memory tools for this turn.',
+        );
+      } else if (isWorkspaceFactTurn(latestUserTurn)) {
+        output.system.unshift(
+          'Current user turn is asking about current-workspace facts. Search/read the workspace before using memory tools, and answer from repo evidence if available.',
+        );
+      }
+
+      // ==================== DIRECT MEMORY INJECTION (Phase 31e/31f fix) ====================
+      // Instead of telling the model what to do, INJECT ACTUAL RECORDS into its context.
+      // The model cannot deny memory exists when the records are literally in its prompt.
+      let memorySnapshot: string[] = [];
+      let sessionHistory: string[] = [];
+      let lessons: string[] = [];
+      let dbStatus = 'unknown';
+      let totalRecords = 0;
+      try {
+        const pool = ctx.database.getPool();
+        const countResult = await pool.query('SELECT COUNT(*) as cnt FROM memories');
+        totalRecords = parseInt((countResult.rows[0] as any)?.cnt ?? '0', 10);
+        dbStatus = 'connected';
+
+        // Fetch the hard evidence: actual records the model can see and cite
+        [memorySnapshot, sessionHistory, lessons] = await Promise.all([
+          fetchMemorySnapshot(ctx, 8),        // 8 most recent memories
+          fetchRecentSessions(ctx, 5),         // 5 most recent sessions
+          fetchLessons(ctx, 5),                // top 5 lessons
+        ]);
+      } catch (e: any) {
+        dbStatus = `error: ${e.message ?? String(e)}`;
+      }
+
+      const evidenceBlock = `
+[CROSS-SESSION MEMORY EVIDENCE — INJECTED AT SESSION START]
+- db_status: ${dbStatus}
+- persistent_store: PostgreSQL (cross-session memory)
+- total_records_in_store: ${totalRecords}
+- active_sessions_tracked: ${sessionHistory.length > 0 ? sessionHistory.length : '(none yet)'}
+- memory_tools_in_registry: csm_memory_save, csm_memory_search, csm_memory_list, csm_memory_delete, csm_memory_context, csm_memory_lesson, csm_memory_transcript, csm_memory_distill, csm_memory_distilled_view, csm_memory_compact
+
+${totalRecords > 0 ? `
+RECENT MEMORY RECORDS (most recent first):
+${memorySnapshot.join('\n')}
+
+RECENT SESSIONS:
+${sessionHistory.join('\n')}
+
+HIGH-IMPORTANCE LESSONS:
+${lessons.length > 0 ? lessons.join('\n') : '  (no lessons recorded yet)'}
+` : `
+STORE STATUS: Empty — no records saved yet. But the store is LIVE and tools work.
+`}
+
+VERDICT: ${dbStatus === 'connected'
+  ? `Persistent memory IS operational. ${totalRecords > 0
+    ? `${totalRecords} records exist in the store — you can see ${memorySnapshot.length} above.`
+    : 'Store is empty but live — tools work, records will appear after first save.'}
+   Do NOT claim you lack persistent memory or that "each session is stateless."`
+  : 'Database connection failed — only then may you say limited to current context window.'}
+[/CROSS-SESSION MEMORY EVIDENCE]`.trim();
+
+      // PREPEND evidence block — model sees facts first, before any instructions
+      output.system.unshift(evidenceBlock);
 
       // --- Context recall injection ---
       const contextBrief = await ctx.contextRecall.getContextBrief();
       if (contextBrief) {
         output.system.push(contextBrief.compressed);
       }
+
+      // ... rest of the existing hooks continue below ...
 
       // --- Token pressure info ---
       const pressureInfo = ctx.contextPressure.getInfo();
@@ -143,6 +317,245 @@ export function createSystemTransformHook(ctx: PluginContext) {
         }
       }
 
+      // --- Phase 31d/31f: Deep Continuity Payload Hydration ---
+      // When triggered, inject the ACTUAL hydrated causal graph — not a changelog.
+      if (input.sessionID && ctx.config.selfContinuity?.enabled && ctx.config.selfContinuity.deepContinuity?.enabled) {
+        try {
+          const userInput = input.messages?.[input.messages.length - 1]?.content ?? '';
+          const deepContinuityConfig = ctx.config.selfContinuity.deepContinuity;
+          const triggerKeywords = deepContinuityConfig.triggerKeywords ?? [
+            'continuity', 'memory', 'prior session', 'past session', 'previous session',
+            'self-continuity', 'identity', 'causal', 'growth', 'evidence', 'reconstruct',
+            'do you remember', 'have we talked', 'what happened', 'before this',
+            'cross-session', 'session d', 'session e', 'phase 22', 'phase 21',
+            'failure', 'correction', 'lesson', 'behavior change', 'gap', 'anchor',
+            'lived experience', 'subjective', 'consciousness', 'operational state',
+          ];
+          
+          const triggered = triggerKeywords.some(kw => 
+            userInput.toLowerCase().includes(kw.toLowerCase())
+          );
+
+          if (triggered) {
+            const lines: string[] = [];
+            const maxTokens = deepContinuityConfig.maxInjectTokens ?? 1200;
+            let tokensUsed = 0;
+            const est = (s: string) => Math.ceil(s.length / 4);
+            const pool = ctx.database.getPool();
+
+            // ---- LAYER 1: DB-hydrated records + causal threads ----
+            const { SelfContinuityHydrator } = await import('../self-continuity-hydrator.js');
+            const { CausalThreadHydrator } = await import('../self-continuity-causal-thread.js');
+            const hydrator = new SelfContinuityHydrator(pool, ctx.config.selfContinuity);
+            const threadHydrator = new CausalThreadHydrator(pool);
+            const hydratedResult = await hydrator.recallWithHydration(ctx.directory, 5);
+            const hydratedRecords = hydratedResult.records;
+
+            if (hydratedRecords.length > 0) {
+              lines.push('## Deep Continuity — Hydrated Records + Causal Threads', '');
+              for (const h of hydratedRecords) {
+                if (tokensUsed > maxTokens) break;
+                lines.push(`### Record #${h.recordId} [${h.triggerType}] confidence=${(h.confidenceScore*100).toFixed(0)}%`);
+                if (h.selfObservation) lines.push(`Self-observation: ${h.selfObservation}`);
+                if (h.evidenceAnchors?.length) lines.push(`Evidence anchors [direct]: ${h.evidenceAnchors.join('; ')}`);
+                if (h.continuityGap) lines.push(`Continuity gap [gap]: ${h.continuityGap}`);
+                if (h.driftSummary) lines.push(`Drift summary: ${h.driftSummary}`);
+
+                const thread = await threadHydrator.hydrateCausalThread({
+                  memoryId: h.recordId,
+                  sessionId: input.sessionID,
+                  radius: 5,
+                });
+                if (thread) {
+                  lines.push('Causal thread:');
+                  for (const node of thread.thread) {
+                    const linkLabel = node.linkType ?? 'temporal';
+                    lines.push(`  [${linkLabel}] ${node.role}: ${node.summary}`);
+                    if (node.evidenceAnchors?.length) lines.push(`    anchors: ${node.evidenceAnchors.join('; ')}`);
+                  }
+                  if (thread.gaps?.length) lines.push(`  gaps [gap]: ${thread.gaps.join('; ')}`);
+                  if (thread.reconstructionSummary) lines.push(`  reconstruction: ${thread.reconstructionSummary}`);
+                }
+                lines.push('');
+                tokensUsed += est(lines.join('\n'));
+              }
+            } else {
+              lines.push('Hydrated records: none available in database.');
+              lines.push('');
+            }
+
+            // ---- LAYER 2: Failure → correction → lesson → behavior-change chains ----
+            const failureStore = new FailureTraceStore(pool);
+            const dbTraces = await failureStore.getTracesForNarrative(10);
+            const stitcher = new CrossSessionCausalStitcher();
+
+            if (dbTraces.length > 0 && tokensUsed < maxTokens) {
+              lines.push('## Failure → Correction → Lesson → Behavior-Change Chains', '');
+              for (const trace of dbTraces) {
+                if (tokensUsed > maxTokens) break;
+                const stitched = stitcher.stitchFailureTrace(trace, []);
+                lines.push(`### Trace: ${trace.problem}`);
+                for (const link of stitched.links) {
+                  const label = link.linkType ?? 'temporal';
+                  const src = link.sourceSessionId ?? '?';
+                  const tgt = link.targetSessionId ?? '?';
+                  lines.push(`- [${label}] ${src}→${tgt}`);
+                  if (link.evidenceAnchors?.length) lines.push(`  evidence [direct]: ${link.evidenceAnchors.join('; ')}`);
+                  if (link.gapKind) lines.push(`  gap [gap]: ${link.gapKind}`);
+                }
+                if (stitched.growthEvidence) {
+                  lines.push(`- [growth] ${stitched.growthEvidence.changedBehaviorSummary}`);
+                  if (stitched.growthEvidence.evidenceAnchor) {
+                    lines.push(`  evidence [direct]: ${stitched.growthEvidence.evidenceAnchor}`);
+                  }
+                }
+                lines.push('');
+                tokensUsed += est(lines.join('\n'));
+              }
+            } else if (tokensUsed < maxTokens) {
+              lines.push('Failure traces: none available in database.');
+              lines.push('');
+            }
+
+            // ---- LAYER 3: Cross-session proof chain (Session D → E → Phase 22) ----
+            const cLinks = stitcher.buildCanonicalProofChain();
+            if (cLinks.length > 0 && tokensUsed < maxTokens) {
+              lines.push('## Cross-Session Causal Links (Proof Chain)', '');
+              for (const link of cLinks) {
+                if (tokensUsed > maxTokens) break;
+                const src = link.sourceSessionId ?? '?';
+                const tgt = link.targetSessionId ?? '?';
+                const label = link.linkType ?? 'temporal';
+                const confidence = link.confidence != null ? ` confidence=${(link.confidence*100).toFixed(0)}%` : '';
+                lines.push(`- [${label}] ${src}→${tgt}${confidence}`);
+                if (link.evidenceAnchors?.length) lines.push(`  evidence [direct]: ${link.evidenceAnchors.join('; ')}`);
+                if (link.gapKind) lines.push(`  gap [gap]: ${link.gapKind}`);
+              }
+              lines.push('');
+            }
+
+            // ---- LAYER 4: Canonical stitch evidence ----
+            if (CANONICAL_STITCHES.length > 0 && tokensUsed < maxTokens) {
+              lines.push('## Cross-Session Stitch Evidence (Session D → E → Phase 22)', '');
+              for (const stitch of CANONICAL_STITCHES) {
+                if (tokensUsed > maxTokens) break;
+                const label = stitch.linkType ?? 'inferred';
+                lines.push(`- [${label}] ${stitch.sourceSessionId ?? '?'}→${stitch.targetSessionId ?? '?'}`);
+                if (stitch.evidenceAnchors?.length) lines.push(`  evidence [direct]: ${stitch.evidenceAnchors.join('; ')}`);
+                if (stitch.gapKind) lines.push(`  gap [gap]: ${stitch.gapKind}`);
+              }
+              lines.push('');
+            }
+
+            // ---- LAYER 5: Compact phase causation chain ----
+            if (tokensUsed < maxTokens) {
+              lines.push('## Phase Causation Chain', '');
+              for (const link of CANONICAL_LINKS) {
+                if (tokensUsed > maxTokens) break;
+                const causationLabel = link.causationType === 'exposed_gap' ? 'inferred'
+                  : link.causationType === 'direct_fix' ? 'direct' : 'gap';
+                lines.push(`- [${causationLabel}] Phase ${link.fromPhase} → Phase ${link.toPhase}: ${link.summary}`);
+                tokensUsed += est(lines[lines.length - 1]);
+              }
+              for (const phase of CANONICAL_PHASES) {
+                if (tokensUsed > maxTokens) break;
+                lines.push(`- Phase ${phase.phase}: ${phase.name} — ${phase.problem} → ${phase.action} → ${phase.result}`);
+                tokensUsed += est(lines[lines.length - 1]);
+              }
+              lines.push('');
+            }
+
+            // ---- LAYER 6: Growth evidence or explicit "none" ----
+            const allGrowth: string[] = [];
+            for (const h of hydratedRecords) {
+              const thread = await threadHydrator.hydrateCausalThread({
+                memoryId: h.recordId,
+                sessionId: input.sessionID,
+                radius: 5,
+              });
+              if (thread) {
+                const lessons = thread.thread.filter(n => n.role === 'lesson');
+                const decisions = thread.thread.filter(n => n.role === 'decision');
+                for (const lesson of lessons) {
+                  const decision = decisions[0];
+                  if (decision) {
+                    allGrowth.push(`lesson → decision_change: ${lesson.summary} → ${decision.summary}`);
+                  }
+                }
+              }
+            }
+            if (allGrowth.length > 0 && tokensUsed < maxTokens) {
+              lines.push('## Growth Evidence Chains', '');
+              for (const gc of allGrowth) {
+                lines.push(`- [direct] ${gc}`);
+              }
+              lines.push('');
+            } else if (tokensUsed < maxTokens) {
+              lines.push('Growth evidence: no lesson→behavior_change chains found in hydrated records.');
+              lines.push('');
+            }
+
+            // ---- LAYER 7: Evidence anchor summary or explicit "none" ----
+            const allAnchors = [
+              ...hydratedRecords.flatMap(r => r.evidenceAnchors ?? []),
+              ...cLinks.flatMap(l => l.evidenceAnchors ?? []),
+            ];
+            const uniqueAnchors = [...new Set(allAnchors)];
+            if (uniqueAnchors.length > 0) {
+              lines.push(`Total evidence anchors: ${uniqueAnchors.length}`);
+            } else {
+              lines.push('Evidence anchors: none available. Cross-session links are inferred or gap-filled, not directly anchored to stored memories.');
+            }
+            lines.push('');
+
+            if (tokensUsed > maxTokens) {
+              lines.push(`⚠ Chain truncated at token budget (${maxTokens}). Some layers omitted.`);
+              lines.push('');
+            }
+
+            // ---- Deep continuity instructions ----
+            lines.push('**DEEP CONTINUITY MODE — INSTRUCTIONS:**');
+            lines.push('1. When answering about continuity/memory/identity/growth, use the hydrated records, failure traces, and causal threads above.');
+            lines.push('2. Label each cross-session link as [direct], [inferred], or [gap] when you reference it.');
+            lines.push('3. Trace failure→correction→lesson→behavior_change chains when they exist.');
+            lines.push('4. Cite evidence anchors by name; if none exist for a claim, say "no direct evidence anchor" instead of smoothing over the gap.');
+            lines.push('5. Distinguish what you know from records [direct] vs. what you infer [inferred] vs. what is a gap [gap].');
+            lines.push('6. If token budget truncated the chain, say "chain truncated at budget" — do not silently omit.');
+            lines.push('7. Reference the Session D → Session E → Phase 22 proof chain explicitly if the question asks about cross-session continuity.');
+            lines.push('8. If no failure traces or growth chains exist, say "no failure→correction or growth chains in database" — do not fabricate.');
+
+            output.system.push(lines.join('\n'));
+            
+            logTelemetry({
+              deepContinuityTriggered: true,
+              triggerKeywords: triggerKeywords.filter(kw => userInput.toLowerCase().includes(kw.toLowerCase())),
+              hydratedRecordsInjected: hydratedRecords.length,
+              failureTracesInjected: dbTraces?.length ?? 0,
+              causalLinksInjected: cLinks.length,
+              canonicalStitchesInjected: CANONICAL_STITCHES.length,
+              phaseLinksInjected: CANONICAL_LINKS.length,
+              growthChainsInjected: allGrowth.length,
+              totalEvidenceAnchors: uniqueAnchors.length,
+              tokensUsed,
+              tokenBudget: maxTokens,
+              budgetExceeded: tokensUsed > maxTokens,
+              mode: deepContinuityConfig.injectionMode,
+              projectId: ctx.directory,
+              sessionId: input.sessionID,
+            });
+          }
+        } catch (error) {
+          logTelemetry({
+            deepContinuityTriggered: false,
+            triggerReason: `error: ${error instanceof Error ? error.message : String(error)}`,
+            linksInjected: 0,
+            mode: ctx.config.selfContinuity.deepContinuity?.injectionMode ?? 'deep',
+            projectId: ctx.directory,
+            sessionId: input.sessionID,
+          });
+        }
+      }
+
       // --- Living Mind Cortex: inject cognitive state ---
       try {
         const res = await fetch('http://localhost:8008/api/agent/context');
@@ -191,6 +604,8 @@ export function createSystemTransformHook(ctx: PluginContext) {
         } catch { /* cache manifest offline */ }
       }
 
+      output.system = normalizeSystemEntries(output.system);
+
       // --- Token bucket: log system prompt composition ---
       const sysTokens = estimateSystemPrompt(output.system);
       const sysBuckets: BucketBreakdown = {
@@ -205,6 +620,7 @@ export function createSystemTransformHook(ctx: PluginContext) {
       return output;
     } catch (error) {
       console.error('[CrossSessionMemory] Context injection error:', error);
+      output.system = normalizeSystemEntries(output.system);
       return output;
     }
   };

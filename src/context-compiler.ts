@@ -10,6 +10,90 @@
 import { estimateTokens } from './token-bucket-analyzer.js';
 import type { ContextCompilerConfig, BudgetMode, CompressedPartDetail, AlchemistLesson, LessonTelemetry } from './types.js';
 
+function buildSyntheticLessonMessage(
+  messages: { info?: Record<string, unknown> & { role?: string; sessionID?: string }; parts?: any[] }[],
+  lessonBlock: string,
+): { info?: Record<string, unknown> & { role?: string; sessionID?: string }; parts?: any[] } {
+  const template = [...messages].reverse().find((message) => message.info?.role === 'assistant');
+  const sessionID = String(template?.info?.sessionID ?? 'lesson-session');
+  const messageID = `${sessionID}-lesson-${Date.now()}`;
+  const partTemplate = template?.parts?.find((part) => part?.type === 'text');
+  const lessonPart = partTemplate?.type === 'text'
+    ? {
+      type: 'text',
+      id: `${messageID}-part`,
+      sessionID,
+      messageID,
+      text: lessonBlock,
+      synthetic: true,
+      metadata: { injectedLesson: true },
+    }
+    : {
+      id: `${messageID}-part`,
+      sessionID,
+      messageID,
+      type: 'text',
+      text: lessonBlock,
+      synthetic: true,
+      metadata: { injectedLesson: true },
+    };
+
+  return {
+    info: template?.info
+      ? {
+        ...template.info,
+        id: messageID,
+        role: 'assistant',
+        sessionID,
+        time: { ...(template.info.time as Record<string, unknown> ?? {}), created: Date.now() },
+      }
+      : {
+        id: messageID,
+        sessionID,
+        role: 'assistant',
+        time: { created: Date.now() },
+        parentID: '',
+        modelID: 'synthetic',
+        providerID: 'synthetic',
+        mode: 'default',
+        agent: 'cross-session-memory',
+        path: { cwd: '', root: '' },
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      },
+    parts: [lessonPart],
+  };
+}
+
+function buildLessonPart(
+  message: { info?: Record<string, unknown> & { role?: string; sessionID?: string }; parts?: any[] },
+  lessonBlock: string,
+): any {
+  const messageID = String(message.info?.id ?? `${message.info?.sessionID ?? 'lesson-session'}-lesson-${Date.now()}`);
+  const sessionID = String(message.info?.sessionID ?? 'lesson-session');
+  const template = message.parts?.find((part) => part?.type === 'text');
+  if (template?.type === 'text') {
+    return {
+      type: 'text',
+      id: `${messageID}-lesson-part`,
+      sessionID,
+      messageID,
+      text: lessonBlock,
+      synthetic: true,
+      metadata: { injectedLesson: true },
+    };
+  }
+  return {
+    id: `${messageID}-lesson-part`,
+    sessionID,
+    messageID,
+    type: 'text',
+    text: lessonBlock,
+    synthetic: true,
+    metadata: { injectedLesson: true },
+  };
+}
+
 export interface CompileResult {
   beforeTokens: number;
   afterTokens: number;
@@ -86,7 +170,7 @@ export function formatLessonBlock(injected: AlchemistLesson[]): string {
 }
 
 export function compileContextWithLessons(
-  messages: { info?: { role?: string }; parts?: any[] }[],
+  messages: { info?: Record<string, unknown> & { role?: string; sessionID?: string }; parts?: any[] }[],
   config: ContextCompilerConfig,
   alchemist?: { recall: (context: string) => AlchemistLesson[] },
   lessonTokenBudget: number = 300,
@@ -108,12 +192,11 @@ export function compileContextWithLessons(
           injectedLessons = injected;
           if (injected.length > 0) {
             const lessonBlock = formatLessonBlock(injected);
-            const lessonPart = { type: 'text', text: lessonBlock };
             const lastAssistant = [...messages].reverse().find(m => m.info?.role === 'assistant');
             if (lastAssistant) {
-              lastAssistant.parts = [...(lastAssistant.parts ?? []), lessonPart];
+              lastAssistant.parts = [...(lastAssistant.parts ?? []), buildLessonPart(lastAssistant, lessonBlock)];
             } else {
-              messages.push({ info: { role: 'assistant' }, parts: [lessonPart] });
+              messages.push(buildSyntheticLessonMessage(messages, lessonBlock));
             }
           }
         }
