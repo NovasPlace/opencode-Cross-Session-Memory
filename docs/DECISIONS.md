@@ -155,3 +155,13 @@ Self-continuity records can surface naturally in silent mode, and later sessions
 - **Test results**: All 3 anchors score stable; 8 drift detection tests pass (11/11 total)
 - **Trade-off**: Adds evaluation overhead; anchors may need updating as experiments continue
 - **Status**: ✅ LOCKED — 11 tests passing, all A/D/E fixtures validated
+
+### 23. Self-Continuity Evidence Hydration — Phase 23 ✅ LOCKED
+- **Decision**: When a self-continuity record is recalled, inject its canonical self-observation and evidence anchors directly via a dedicated hydration path — not the generic compressed/episodic summary path.
+- **Why**: Session F exposed that recalled self-continuity evidence was coming through lossy episodic compression ("Pushed to `origin/master`..."), not the clean record hydration path. The agent sees the shape but the evidence channel can be polluted or truncated. Canonical hydration fixes this.
+- **Canonical fields injected**: record_id, created_at, trigger_type, self_observation, evidence_anchors, continuity_gap, confidence_score, drift_summary, similarity_method
+- **Guard**: generic episodic summaries cannot replace the record's self_observation. `HydratedSelfContinuityRecord` preserves canonical fields; `formatAllForInjection` renders them as a structured block.
+- **Limits**: max 3 injectable records (configurable); synthetic_test records excluded; redaction still applies to self_observation; fallback returns graceful empty string (never blocks).
+- **API**: `SelfContinuityHydrator.getRecordById(pool, recordId, projectId)` fetches one record; `hydrateRecord(record)` formats canonical fields; `recallWithHydration(pool, projectId, limit)` recalls and hydrates; `formatAllForInjection(records)` renders injectable text.
+- **Trade-off**: Adds one DB lookup + redaction per hydration; graceful fallback means failures degrade to no injection, never crash.
+- **Status**: ✅ LOCKED — 11 tests passing (57 total across all suites)

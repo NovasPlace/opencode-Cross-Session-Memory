@@ -2,6 +2,13 @@
 
 ## Development Log
 
+### 2026-06-27 — Phase 23 LOCKED: Self-Continuity Evidence Hydration
+- `SelfContinuityHydrator` class: getRecordById, hydrateRecord, recallWithHydration, formatAllForInjection
+- Canonical fields: record_id, created_at, trigger_type, self_observation, evidence_anchors, continuity_gap, confidence_score, drift_summary, similarity_method
+- Guards: generic episodic summaries cannot replace record self_observation; synthetic_test excluded; max 3 enforced; redaction applies
+- Fallback: graceful empty string on failures (never blocks)
+- Tests: 11 hydration tests (57 total across all suites)
+
 ### 2026-06-27 — Phase 22 LOCKED: Self-Model Drift Tracking
 - 5-dimension stability metric: evidence_anchoring, reconstruction_boundary, uncertainty_preservation, subjective_overclaim, recursive_awareness
 - Verdict thresholds: stable (≥0.5), mild_drift (≥0.3), significant_drift (<0.3)

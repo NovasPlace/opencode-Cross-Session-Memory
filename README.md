@@ -30,9 +30,10 @@ This plugin gives an AI assistant long-term memory. Without it, every new sessio
 - **Auto-checkpointing** - Queues checkpoints before risky operations.
 - **Checkpoint markdown** - Renders checkpoints into readable summaries for debugging and handoff.
 
-### Self-Continuity (Phase 21)
-- **Self-continuity records** - Structured records that capture what the agent knows about its own identity, continuity gaps, and evidence anchors across sessions.
-- **Injection modes** - Silent (context pane) or instrumented (prompt-level) delivery of continuity context.
+### Self-Continuity Evidence Hydration (Phase 23)
+- **Canonical hydration** - When a self-continuity record is recalled, its canonical self-observation and evidence anchors are injected directly via a dedicated `SelfContinuityHydrator` path — bypassing lossy generic/episodic compression.
+- **Canonical fields** - record_id, created_at, trigger_type, self_observation, evidence_anchors, continuity_gap, confidence_score, drift_summary, similarity_method.
+- **Guards** - Max 3 records enforced, synthetic_test excluded, redaction applied, fallback to summary on failure without blocking.
 - **Weighted confidence** - Each record carries a confidence score based on evidence strength, recency, and source reliability.
 - **Natural recall** - Proven in live experiments: agents naturally cite continuity records when asked about identity/continuity without explicit prompting.
 
