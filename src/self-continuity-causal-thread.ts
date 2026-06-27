@@ -38,6 +38,8 @@ export interface CausalThreadResult {
   fallbackUsed: boolean;
 }
 
+export type HydratedCausalThread = CausalThreadResult;
+
 export interface HydrateCausalThreadOptions {
   memoryId: number;
   sessionId?: string;
@@ -230,7 +232,7 @@ export class CausalThreadHydrator {
       ORDER BY id, created_at`,
       [rootId, radius],
     );
-    return result.rows.map((row: Record<string, unknown>) => ({
+    return (result.rows as Record<string, unknown>[]).map((row) => ({
       id: row.id as number,
       content: row.content as string,
       type: row.type as string,
@@ -252,7 +254,7 @@ export class CausalThreadHydrator {
        LIMIT $3`,
       [sessionId, rootId, radius],
     );
-    return result.rows.map((row: Record<string, unknown>) => ({
+    return (result.rows as Record<string, unknown>[]).map((row) => ({
       id: row.id as number,
       content: row.content as string,
       type: row.type as string,
@@ -270,7 +272,7 @@ export class CausalThreadHydrator {
          LIMIT $2`,
         [rootId, Math.min(radius, 3)],
       );
-      return result.rows.map((row: Record<string, unknown>) => ({
+      return (result.rows as Record<string, unknown>[]).map((row) => ({
         id: row.id as number,
         content: row.content as string,
         created_at: row.created_at as Date,
@@ -290,7 +292,7 @@ export class CausalThreadHydrator {
          LIMIT $2`,
         [rootId, Math.min(radius, 3)],
       );
-      return result.rows.map((row: Record<string, unknown>) => ({
+      return (result.rows as Record<string, unknown>[]).map((row) => ({
         id: row.id as number,
         content: row.content as string,
         created_at: row.created_at as Date,

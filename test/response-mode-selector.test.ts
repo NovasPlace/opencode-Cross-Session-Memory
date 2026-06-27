@@ -14,22 +14,16 @@ import type { HydratedCausalThread } from '../src/self-continuity-causal-thread.
 
 function makeRecord(overrides: Partial<HydratedSelfContinuityRecord> = {}): HydratedSelfContinuityRecord {
   return {
-    record: {
-      id: overrides.record?.id ?? 1,
-      triggerType: overrides.record?.triggerType ?? 'user_prompt',
-      selfObservation: overrides.record?.selfObservation ?? 'test observation',
-      evidenceAnchors: overrides.record?.evidenceAnchors ?? ['anchor-a'],
-      continuityGap: overrides.record?.continuityGap ?? 'test gap',
-      driftSummary: overrides.record?.driftSummary ?? 'no drift',
-      confidenceScore: overrides.record?.confidenceScore ?? 0.8,
-      projectId: overrides.record?.projectId ?? 'proj',
-      sessionId: overrides.record?.sessionId ?? 'ses',
-      createdAt: overrides.record?.createdAt ?? '2026-06-27',
-      metadata: overrides.record?.metadata ?? {},
-    },
-    canonicalSelfObservation: overrides.canonicalSelfObservation ?? 'test observation',
-    canonicalEvidenceAnchors: overrides.canonicalEvidenceAnchors ?? ['anchor-a'],
-    redacted: false,
+    recordId: overrides.recordId ?? 1,
+    createdAt: overrides.createdAt ?? new Date('2026-06-27'),
+    triggerType: overrides.triggerType ?? 'user_prompt',
+    confidenceScore: overrides.confidenceScore ?? 0.8,
+    selfObservation: overrides.selfObservation ?? 'test observation',
+    evidenceAnchors: overrides.evidenceAnchors ?? ['anchor-a'],
+    continuityGap: overrides.continuityGap ?? 'test gap',
+    driftSummary: overrides.driftSummary ?? 'no drift',
+    similarityMethod: overrides.similarityMethod ?? 'keyword_fallback',
+    hydratedAt: overrides.hydratedAt ?? new Date('2026-06-27'),
   };
 }
 
@@ -43,6 +37,8 @@ function makeThread(): HydratedCausalThread {
     gaps: [],
     confidence: 0.85,
     reconstructionSummary: 'Clean causal chain',
+    budgetExceeded: false,
+    fallbackUsed: false,
   };
 }
 
@@ -63,6 +59,8 @@ function makeEmptyResult(): IntegratedRecallResult {
     avgStability: 0,
     avgHydrationDepth: 0,
     phaseNarrative: null,
+    summary: 'No self-continuity records found.',
+    tokenBudget: 3000,
   };
 }
 
@@ -75,24 +73,24 @@ function makeBasicResult(): IntegratedRecallResult {
     avgStability: rec.stabilityScore,
     avgHydrationDepth: rec.hydrationDepthScore,
     phaseNarrative: null,
+    summary: 'Hydrated 1 record.',
+    tokenBudget: 2600,
   };
 }
 
 function makeDeepResult(): IntegratedRecallResult {
   const rec = makeIntegratedRecord(makeThread());
   const narrative: PhaseNarrativeResult = {
-    chains: [{
+    phases: [],
+    links: [{
       fromPhase: 21,
       toPhase: 22,
-      problem: 'No self-continuity',
-      action: 'Built records + drift tracking',
-      result: 'Silent recall proven',
-      downstreamChange: 'Phase 23 hydration',
-      confidence: 0.9,
-      timestamp: '2026-06-27',
+      causationType: 'exposed_gap',
+      summary: 'Phase 21 led to Phase 22 because silent recall exposed the need for drift tracking.',
     }],
-    avgConfidence: 0.9,
-    formatSummary: 'Phase 21 led to 22',
+    narrative: 'Phase 21 led to Phase 22.',
+    gaps: [],
+    confidence: 0.9,
   };
   return {
     records: [rec],
@@ -101,6 +99,8 @@ function makeDeepResult(): IntegratedRecallResult {
     avgStability: rec.stabilityScore,
     avgHydrationDepth: rec.hydrationDepthScore,
     phaseNarrative: narrative,
+    summary: 'Hydrated 1 record with 1 thread.',
+    tokenBudget: 2400,
   };
 }
 
@@ -135,6 +135,8 @@ describe('ResponseModeSelector', () => {
         avgStability: 0.85,
         avgHydrationDepth: 0.7,
         phaseNarrative: null,
+        summary: 'Hydrated 1 record.',
+        tokenBudget: 2600,
       };
       const result = selectResponseMode(r);
       assert.equal(result.mode, 'deep');

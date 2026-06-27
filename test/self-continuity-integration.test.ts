@@ -6,24 +6,16 @@ import type { HydratedCausalThread } from '../src/self-continuity-causal-thread.
 
 function makeRecord(id: number, content: string): HydratedSelfContinuityRecord {
   return {
-    record: {
-      id,
-      project_id: null,
-      session_id: 'ses-1',
-      self_observation: content,
-      evidence_anchors: ['memory #43871', 'Session D'],
-      continuity_gap: 'Shape without texture',
-      drift_summary: 'Stable boundary',
-      confidence_score: 0.85,
-      trigger_type: 'identity_question',
-      metadata: {},
-      created_at: new Date('2026-06-27').toISOString(),
-    },
+    recordId: id,
+    createdAt: new Date('2026-06-27'),
+    triggerType: 'identity_question',
+    confidenceScore: 0.85,
     selfObservation: content,
     evidenceAnchors: ['memory #43871', 'Session D'],
     continuityGap: 'Shape without texture',
     driftSummary: 'Stable boundary',
-    confidenceScore: 0.85,
+    similarityMethod: 'keyword_fallback',
+    hydratedAt: new Date('2026-06-27'),
   };
 }
 
@@ -38,11 +30,14 @@ function makeThread(rootId: number, nodeCount: number): HydratedCausalThread {
       summary: `Step ${i + 1} in the chain`,
       evidenceAnchors: [`memory #${rootId + i + 1}`],
       confidence: 0.8,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date('2026-06-27'),
+      linkType: i === 0 ? 'causal' : 'reference',
     })),
-    gaps: nodeCount < 4 ? ['missing_result'] : [],
+    gaps: nodeCount < 4 ? [{ kind: 'missing_result', detail: 'action present but no recorded result confirming success or failure' }] : [],
     confidence: 0.8,
     reconstructionSummary: `Reconstructed ${nodeCount}-step thread`,
+    budgetExceeded: false,
+    fallbackUsed: false,
   };
 }
 

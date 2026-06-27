@@ -92,7 +92,7 @@ export class SelfContinuityIntegration {
       try {
         if (budgetLeft >= THREAD_TOKEN_ESTIMATE) {
           causalThread = await this.threadHydrator.hydrateThread({
-            memoryId: record.record.id,
+            memoryId: record.recordId,
             sessionId: options.sessionId,
             projectId: options.projectId,
             radius,
@@ -149,7 +149,7 @@ export class SelfContinuityIntegration {
     for (const item of result.records) {
       const r = item.record;
       const lines: string[] = [];
-      lines.push(`[Record #${r.record.id} | ${r.record.triggerType} | confidence: ${r.record.confidenceScore}]`);
+      lines.push(`[Record #${r.recordId} | ${r.triggerType} | confidence: ${r.confidenceScore}]`);
       lines.push(`Observation: ${r.selfObservation}`);
       lines.push(`Evidence: ${r.evidenceAnchors.join(', ')}`);
       lines.push(`Gap: ${r.continuityGap}`);
@@ -161,7 +161,7 @@ export class SelfContinuityIntegration {
           lines.push(`  [${node.role}] ${node.summary}`);
         }
         if (item.causalThread.gaps.length > 0) {
-          lines.push(`Thread gaps: ${item.causalThread.gaps.join('; ')}`);
+          lines.push(`Thread gaps: ${item.causalThread.gaps.map((gap) => gap.detail).join('; ')}`);
         }
       }
 
@@ -179,7 +179,7 @@ export class SelfContinuityIntegration {
 
   private buildSummary(records: IntegratedRecord[], threads: number): string {
     if (records.length === 0) return 'No self-continuity records found.';
-    const ids = records.map(r => `#${r.record.record.id}`).join(', ');
+    const ids = records.map((r) => `#${r.record.recordId}`).join(', ');
     return `Hydrated ${records.length} record(s) (${ids}) with ${threads} causal thread(s).`;
   }
 

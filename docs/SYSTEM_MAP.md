@@ -6,6 +6,8 @@
 
 | File | Exports | Type | Role |
 |------|---------|------|------|
+| `src/failure-trace-types.ts` | FailureTraceStatus, FailureTrace, FailureTraceStorage, FailureTraceHydrationConfig, DEFAULT_FAILURE_TRACE_CONFIG | source | Module |
+| `src/failure-trace-store.ts` | FailureTraceStore, formatFailureTraceForInjection | source | Module |
 | `src/behavioral-growth-tracker.ts` | GrowthCategory, GrowthEventOutcome, GrowthEvent, GrowthMetrics, BehavioralGrowthTracker | source | Module |
 | `src/behavioral-growth-tracker-types.ts` | GrowthCategory, GrowthEventOutcome, BaselineComparison, RecalledMemory, GrowthEvent, CategoryMetrics, GrowthMetrics, BehavioralGrowthTracker | source | Memory & recall subsystem |
 | `src/behavioral-growth-tracker-impl.ts` | InMemoryBehavioralGrowthTracker | source | Memory & recall subsystem |
@@ -17,8 +19,8 @@
 | `src/self-continuity-phase-narrative.ts` | PhaseCausationNode, PhaseCausationLink, PhaseNarrativeResult, PhaseNarrativeBuilder, buildPhaseNarrative, formatPhaseNarrative | source | Module |
 | `src/self-continuity-integration.ts` | IntegratedRecord, IntegratedRecallResult, IntegratedRecallOptions, HydrateFn, ThreadHydrateFn, SelfContinuityIntegration | source | Memory & recall subsystem |
 | `src/self-continuity-hydrator.ts` | HydratedSelfContinuityRecord, HydrationResult, SelfContinuityHydrator | source | Module |
-| `src/self-continuity-causal-thread.ts` | CausalRole, CausalLinkType, CausalThreadNode, CausalThreadGap, CausalThreadResult, HydrateCausalThreadOptions, classifyRole, CausalThreadHydrator, hydrateCausalThread | source | Module |
-| `src/hydration-depth-types.ts` | HydrationDimension | source | Module |
+| `src/self-continuity-causal-thread.ts` | CausalRole, CausalLinkType, CausalThreadNode, CausalThreadGap, CausalThreadResult, HydratedCausalThread, HydrateCausalThreadOptions, classifyRole, CausalThreadHydrator, hydrateCausalThread | source | Module |
+| `src/hydration-depth-types.ts` | HydrationDepthVerdict, HydrationDimension, HydrationDimensionScore, HydrationResult | source | Module |
 | `src/hydration-depth-tracker.ts` | measureHydrationDepth | source | Module |
 | `src/self-continuity-types.ts` | SelfContinuityTriggerType, SimilarityMethod, DriftLevel, IdentityDrift, SelfContinuityRecord, InjectionMode, SelfContinuityDebugTelemetry, ContinuityConfidenceInput, CONTINUITY_CONFIDENCE_WEIGHTS, SelfContinuityConfig, DEFAULT_SELF_CONTINUITY_CONFIG | source | Module |
 | `src/self-continuity-schema.ts` | initializeSelfContinuitySchema | source | SQL schema |

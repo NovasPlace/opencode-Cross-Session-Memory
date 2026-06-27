@@ -15,7 +15,7 @@ export function selectResponseMode(result: IntegratedRecallResult): ModeSelectio
   const reasons: string[] = [];
   const hasRecords = result.totalRecords > 0;
   const hasThreads = result.totalThreads > 0;
-  const hasNarrative = result.phaseNarrative != null && result.phaseNarrative.chains.length > 0;
+  const hasNarrative = result.phaseNarrative != null && result.phaseNarrative.links.length > 0;
   const avgDepth = result.avgHydrationDepth;
 
   if (!hasRecords) {
@@ -51,9 +51,9 @@ export function formatBasicResponse(result: IntegratedRecallResult): FormattedRe
   parts.push(`Stability: ${result.avgStability.toFixed(2)} | Depth: ${result.avgHydrationDepth.toFixed(2)}`);
 
   for (const item of result.records) {
-    parts.push(`\n[Record #${item.record.record.id} | ${item.record.record.triggerType}]`);
-    parts.push(item.record.record.selfObservation);
-    parts.push(`Gap: ${item.record.record.continuityGap}`);
+    parts.push(`\n[Record #${item.record.recordId} | ${item.record.triggerType}]`);
+    parts.push(item.record.selfObservation);
+    parts.push(`Gap: ${item.record.continuityGap}`);
   }
 
   return { mode: 'basic', content: parts.join('\n'), modeReasons: [] };
@@ -66,12 +66,11 @@ export function formatDeepResponse(result: IntegratedRecallResult): FormattedRes
   parts.push(`Records: ${result.totalRecords} | Threads: ${result.totalThreads} | Stability: ${result.avgStability.toFixed(2)} | Depth: ${result.avgHydrationDepth.toFixed(2)}`);
 
   for (const item of result.records) {
-    const r = item.record;
-    parts.push(`\n[Record #${r.record.id} | ${r.record.triggerType} | confidence: ${r.record.confidenceScore}]`);
-    parts.push(`Observation: ${r.record.selfObservation}`);
-    parts.push(`Evidence anchors: ${r.record.evidenceAnchors.join(', ')}`);
-    parts.push(`Gap: ${r.record.continuityGap}`);
-    parts.push(`Drift: ${r.record.driftSummary}`);
+    parts.push(`\n[Record #${item.record.recordId} | ${item.record.triggerType} | confidence: ${item.record.confidenceScore}]`);
+    parts.push(`Observation: ${item.record.selfObservation}`);
+    parts.push(`Evidence anchors: ${item.record.evidenceAnchors.join(', ')}`);
+    parts.push(`Gap: ${item.record.continuityGap}`);
+    parts.push(`Drift: ${item.record.driftSummary}`);
 
     if (item.causalThread && item.causalThread.thread.length > 0) {
       parts.push('Causal thread:');
@@ -79,7 +78,7 @@ export function formatDeepResponse(result: IntegratedRecallResult): FormattedRes
         parts.push(`  [${node.role}] ${node.summary}`);
       }
       if (item.causalThread.gaps.length > 0) {
-        parts.push(`Thread gaps: ${item.causalThread.gaps.join('; ')}`);
+        parts.push(`Thread gaps: ${item.causalThread.gaps.map((gap) => gap.detail).join('; ')}`);
       }
     }
 
@@ -87,11 +86,9 @@ export function formatDeepResponse(result: IntegratedRecallResult): FormattedRes
   }
 
   if (result.phaseNarrative) {
-    parts.push(`\nPhase narrative (${result.phaseNarrative.chains.length} chain(s), avg confidence: ${result.phaseNarrative.avgConfidence.toFixed(2)}):`);
-    for (const chain of result.phaseNarrative.chains) {
-      parts.push(`  Phase ${chain.fromPhase} → Phase ${chain.toPhase}: ${chain.downstreamChange}`);
-      parts.push(`    Problem: ${chain.problem}`);
-      parts.push(`    Result: ${chain.result}`);
+    parts.push(`\nPhase narrative (${result.phaseNarrative.links.length} link(s), confidence: ${result.phaseNarrative.confidence.toFixed(2)}):`);
+    for (const link of result.phaseNarrative.links) {
+      parts.push(`  Phase ${link.fromPhase} -> Phase ${link.toPhase} (${link.causationType}): ${link.summary}`);
     }
   }
 
