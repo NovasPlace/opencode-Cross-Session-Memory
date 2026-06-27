@@ -2,7 +2,15 @@
 
 ## Development Log
 
-### 2026-06-27 — Phase 25 LOCKED: Hydration Depth Scoring
+### 2026-06-27 — Phase 26 LOCKED: Self-Continuity Integration
+- `SelfContinuityIntegration`: wires SelfContinuityHydrator + CausalThreadHydrator into one injection path
+- `recallWithHydration(memoryId, projectId?, sessionId?)`: hydrates records + causal threads as one unit
+- `formatForInjection(records)`: produces injectable text with both canonical fields and causal context
+- `buildSummary(result)`: generates a short natural-language summary of the hydrated context
+- Dependency injection for testability (hydrator + threadHydrator as constructor params)
+- Graceful fallback: thread hydration failure does not block record hydration
+- Token budget enforcement via maxRecords
+- 7 tests (94 total across all suites)
 - Separate metric from drift tracking: stability ≠ reconstruction depth
 - `measureHydrationDepth(text)` in `src/hydration-depth-tracker.ts`
 - 5 dimensions: record_citation, session_phase_naming, evidence_anchor_depth, causal_chain_reconstruction, gap_reporting

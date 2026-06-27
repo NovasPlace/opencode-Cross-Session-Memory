@@ -30,6 +30,12 @@ This plugin gives an AI assistant long-term memory. Without it, every new sessio
 - **Auto-checkpointing** - Queues checkpoints before risky operations.
 - **Checkpoint markdown** - Renders checkpoints into readable summaries for debugging and handoff.
 
+### Self-Continuity Integration (Phase 26)
+- **Unified injection path** - Wires causal thread hydration into self-continuity record injection, so context compilation automatically includes the "why" behind each record.
+- **Two hydrators as one** - `SelfContinuityIntegration` combines `SelfContinuityHydrator` (canonical fields) and `CausalThreadHydrator` (problem/action/result chains) into a single call.
+- **Graceful degradation** - Thread hydration failure falls back to record-only hydration; never blocks normal recall.
+- **Dependency injection** - Accepts hydrator instances for testability.
+
 ### Hydration Depth Scoring (Phase 25)
 - **Depth vs stability** - Separate metric from drift tracking: a self-model answer can be perfectly stable (no overclaim) but shallow (no evidence). These are orthogonal dimensions.
 - **5 dimensions** - record_citation, session_phase_naming, evidence_anchor_depth, causal_chain_reconstruction, gap_reporting.
@@ -72,7 +78,7 @@ This plugin gives an AI assistant long-term memory. Without it, every new sessio
 
 ## Test Suite
 
-Current source of truth is the test runner output. The suite includes fresh-schema and Phase 19b integration coverage for clean installs, explicit backfill, and hashed recall telemetry. 87 tests total across 14 suites.
+Current source of truth is the test runner output. The suite includes fresh-schema and Phase 19b integration coverage for clean installs, explicit backfill, and hashed recall telemetry. 94 tests total across 15 suites.
 
 | Suite | What It Covers |
 |-------|----------------|

@@ -187,3 +187,6 @@ Self-continuity records can surface naturally in silent mode, and later sessions
 - **Test results**: 14 tests — shallow/deep classification, dimension scoring, drift-independence proof, edge cases
 - **Key insight**: stable answer can be shallow; deep answer can also be stable; drift detection is orthogonal to hydration depth
 - **Status**: ✅ LOCKED — 14 tests passing (87 total across all suites)
+
+### 26. Self-Continuity Integration — Phase 26 ✅ LOCKED
+- **Decision**: Wire causal thread hydration into the self-continuity injection path, so context compilat...[truncated]
