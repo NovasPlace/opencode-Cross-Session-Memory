@@ -1,0 +1,34 @@
+{
+  "name": "cross-session-memory-bridge",
+  "version": "1.1.0",
+  "description": "Repo-local Codex plugin wrapper for the cross-session memory bridge.",
+  "author": {
+    "name": "Donovan"
+  },
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "codex",
+    "postgres",
+    "bridge"
+  ],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Cross-Session Memory Bridge",
+    "shortDescription": "Resume and sync Codex work across sessions.",
+    "longDescription": "Repo-local Codex plugin wrapper for the existing Postgres-backed cross-session memory bridge, including resume, sync, handoff, search, and maintenance tools.",
+    "developerName": "Donovan",
+    "category": "Productivity",
+    "capabilities": [
+      "Search",
+      "Write",
+      "Long-term memory"
+    ],
+    "defaultPrompt": [
+      "Resume context for this coding task from prior sessions.",
+      "Mirror this turn into bridge memory for later handoff.",
+      "Build a handoff summary before we stop."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

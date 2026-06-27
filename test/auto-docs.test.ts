@@ -98,26 +98,30 @@ describe("auto-docs", () => {
   });
 
   describe("isIgnoredPath", () => {
-    const ignored = ["docs/", "dist/", "node_modules/", ".git/"];
-
-    it("matches docs/ path", () => {
-      assert.equal(isIgnoredPath("docs/SYSTEM_MAP.md", ignored), true);
-    });
-
-    it("matches nested docs/ path", () => {
-      assert.equal(isIgnoredPath("project/docs/foo.md", ignored), true);
-    });
-
     it("matches dist/ path", () => {
-      assert.equal(isIgnoredPath("dist/index.js", ignored), true);
+      assert.equal(isIgnoredPath("dist/index.js"), true);
     });
 
     it("does not match src/ path", () => {
-      assert.equal(isIgnoredPath("src/index.ts", ignored), false);
+      assert.equal(isIgnoredPath("src/index.ts"), false);
+    });
+
+    it("allows docs/ files to be tracked (except recursive outputs)", () => {
+      assert.equal(isIgnoredPath("docs/RUNBOOK.md"), false);
+      assert.equal(isIgnoredPath("docs/ARCHITECTURE.md"), false);
+    });
+
+    it("ignores recursive auto-docs output files", () => {
+      assert.equal(isIgnoredPath("docs/CHANGELOG_LIVE.md"), true);
+      assert.equal(isIgnoredPath("docs/SYSTEM_MAP.md"), true);
+      assert.equal(isIgnoredPath("docs/DECISIONS.md"), true);
+      assert.equal(isIgnoredPath("docs/DEBUG_NOTES.md"), true);
+      assert.equal(isIgnoredPath("docs/AGENT_MEMORY.md"), true);
     });
 
     it("handles Windows backslash paths", () => {
-      assert.equal(isIgnoredPath("docs\\SYSTEM_MAP.md", ignored), true);
+      assert.equal(isIgnoredPath("docs\\CHANGELOG_LIVE.md"), true);
+      assert.equal(isIgnoredPath("docs\\RUNBOOK.md"), false);
     });
   });
 
@@ -189,15 +193,20 @@ describe("auto-docs", () => {
       assert.ok(content.includes("Old entry"));
     });
 
-    it("prevents recursive doc-update loops by ignoring docs/ at queue time", async () => {
+    it("prevents recursive doc-update loops by ignoring auto-docs output files", async () => {
       queueDocUpdate("docs/CHANGELOG_LIVE.md", "write");
+      queueDocUpdate("docs/SYSTEM_MAP.md", "write");
       queueDocUpdate("src/real-file.ts", "write");
       await flushDocUpdates();
 
       const content = await fs.readFile(CHANGELOG_PATH, "utf-8");
-      // docs/ should be ignored at queue time
-      assert.ok(!content.includes("docs/CHANGELOG_LIVE.md"));
-      assert.ok(content.includes("src/real-file.ts"));
+      // Auto-docs output files should be ignored to prevent recursion
+      // Check the new entry only (after "Development Log" section)
+      const logStart = content.indexOf("## Development Log");
+      const newEntry = content.slice(logStart);
+      assert.ok(!newEntry.includes("CHANGELOG_LIVE.md"));
+      assert.ok(!newEntry.includes("SYSTEM_MAP.md"));
+      assert.ok(newEntry.includes("src/real-file.ts"));
     });
   });
 

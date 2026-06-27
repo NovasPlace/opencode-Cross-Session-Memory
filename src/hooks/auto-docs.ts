@@ -39,7 +39,6 @@ export function queueDocUpdate(
 export function isIgnoredPath(filePath: string): boolean {
     const normalized = filePath.replace(/\\/g, "/");
     const ignoredPatterns = [
-      "docs/",
       "dist/",
       "node_modules/",
       "coverage/",
@@ -47,6 +46,16 @@ export function isIgnoredPath(filePath: string): boolean {
       "*.log",
       "*.tmp",
     ];
+    // Prevent recursive loops: ignore the files auto-docs itself writes to
+    const recursivePaths = [
+      "CHANGELOG_LIVE.md",
+      "SYSTEM_MAP.md",
+      "DECISIONS.md",
+      "DEBUG_NOTES.md",
+      "AGENT_MEMORY.md",
+    ];
+    const baseName = normalized.split("/").pop() || "";
+    if (recursivePaths.includes(baseName)) return true;
     return ignoredPatterns.some(pattern => {
       if (pattern.endsWith("/")) {
         return normalized.includes(pattern);

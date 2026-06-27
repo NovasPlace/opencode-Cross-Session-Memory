@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cross-session-memory-bridge": {
+      "cwd": "../..",
+      "command": "node",
+      "args": [
+        "./dist/codex-mcp-server.js"
+      ]
+    }
+  }
+}

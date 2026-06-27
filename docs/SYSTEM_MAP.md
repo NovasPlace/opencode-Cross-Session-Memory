@@ -6,6 +6,16 @@
 
 | File | Exports | Type | Role |
 |------|---------|------|------|
+| `src/schema/schema-errors.ts` | PgLikeError, isOwnershipLimitedSchemaError | schema | SQL schema |
+| `src/context-governor.ts` | AdaptiveContextGovernor | source | Module |
+| `src/context-governor-types.ts` | GovernorProfileName, GovernorActionName, GovernorThresholds, GovernorProfile, GovernorConfig, GovernorMetrics, GovernorDecision, GovernorResult | source | Module |
+| `src/context-governor-profiles.ts` | DEFAULT_GOVERNOR_CONFIG, getGovernorProfile | source | Module |
+| `src/context-governor-monitor.ts` | measureGovernorMetrics | source | Module |
+| `src/context-governor-checkpoint.ts` | buildCheckpointRefSummary, buildCheckpointDistilledState | source | Module |
+| `src/context-governor-benchmark.ts` | SessionRunMetrics, GovernorBenchmarkReport, runGovernorBenchmark | source | Module |
+| `src/context-governor-benchmark-fixtures.ts` | BenchmarkMessage, ScenarioFacts, clone, countTokens, toolShare, buildScenario, evaluateContinuity | source | Module |
+| `src/codex-mcp-tools.ts` | MCP_TOOLS, invokeMcpTool | source | Tool registration |
+| `src/codex-bridge-workflow.ts` | ResumeContextPayload, SyncTurnPayload, HandoffSummaryPayload, resumeContextOp, syncTurnOp, handoffSummaryOp | source | Module |
 | `src/prompt-message-sanitizer.ts` | PromptMessageLike, PromptNormalizationOptions, normalizePromptMessages | source | Module |
 | `src/prompt-debug-log.ts` | writePromptDebugLog | source | Module |
 | `src/codex-mcp-server.ts` | none | source | Module |

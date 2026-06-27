@@ -1,4 +1,5 @@
 import { PluginConfig } from './types.js';
+import { DEFAULT_GOVERNOR_CONFIG } from './context-governor-profiles.js';
 import { DEFAULT_ROLLOVER_CONFIG } from './context-rollover-config.js';
 
 // Default configuration for the Cross-Session Memory Plugin
@@ -98,6 +99,7 @@ export const DEFAULT_CONFIG: PluginConfig = {
     logDetailsRetentionDays: 60,    // prune JSONB details after 60 days
     storeRawCompressedContent: false,
   },
+  contextGovernor: DEFAULT_GOVERNOR_CONFIG,
   contextCache: {
     enabled: true,
     minTokensToCache: 200,

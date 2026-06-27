@@ -20,6 +20,14 @@ import {
   type CompactionReportPayload,
   type ContextBriefPayload,
 } from './bridge-ops.js';
+import {
+  handoffSummaryOp,
+  resumeContextOp,
+  syncTurnOp,
+  type HandoffSummaryPayload,
+  type ResumeContextPayload,
+  type SyncTurnPayload,
+} from './codex-bridge-workflow.js';
 import type { Memory, MemoryListOptions, MemorySaveOptions, MemorySearchOptions, PluginConfig, PruneReport } from './types.js';
 
 export class CodexMemoryBridge {
@@ -94,6 +102,43 @@ export class CodexMemoryBridge {
     return getCompactionReportOp(this.deps, sessionId);
   }
 
+  async resumeContext(input: { projectRoot: string; task: string; sessionId?: string; recentLimit?: number }): Promise<ResumeContextPayload> {
+    const sessionId = await this.ensureSession(input.projectRoot, input.sessionId);
+    if (!sessionId) {
+      throw new Error('Bridge session is required for resumeContext');
+    }
+    return resumeContextOp(this.deps, { ...input, sessionId });
+  }
+
+  async syncTurn(input: { projectRoot?: string; sessionId?: string; role: 'user' | 'assistant' | 'system'; content: string; tags?: string[]; metadata?: Record<string, unknown>; memoryType?: MemorySaveOptions['type'] }): Promise<SyncTurnPayload> {
+    const sessionId = await this.ensureSession(input.projectRoot, input.sessionId);
+    if (!sessionId) {
+      throw new Error('Bridge session is required for syncTurn');
+    }
+    return syncTurnOp(this.deps, {
+      projectRoot: input.projectRoot ?? 'codex-bridge',
+      sessionId,
+      role: input.role,
+      content: input.content,
+      tags: input.tags,
+      metadata: input.metadata,
+      memoryType: input.memoryType,
+    });
+  }
+
+  async getHandoffSummary(input: { projectRoot: string; task?: string; sessionId?: string; recentLimit?: number }): Promise<HandoffSummaryPayload> {
+    const sessionId = await this.ensureSession(input.projectRoot, input.sessionId);
+    if (!sessionId) {
+      throw new Error('Bridge session is required for getHandoffSummary');
+    }
+    return handoffSummaryOp(this.deps, {
+      projectRoot: input.projectRoot,
+      task: input.task ?? 'handoff summary',
+      sessionId,
+      recentLimit: input.recentLimit,
+    });
+  }
+
   listTools(): string[] {
     return [
       'save_memory',
@@ -101,6 +146,9 @@ export class CodexMemoryBridge {
       'list_memories',
       'get_context_brief',
       'recall_lessons',
+      'bridge_resume_context',
+      'bridge_sync_turn',
+      'bridge_handoff_summary',
       'prune_memories_dry_run',
       'backfill_missing_embeddings',
       'get_compaction_report',

@@ -2,6 +2,7 @@
 // Inspired by Agent Atlas cognitive memory engine
 
 import type { CheckpointConfig } from './checkpoint-types.js';
+import type { GovernorConfig } from './context-governor-types.js';
 import type { RolloverConfig } from './context-rollover-config.js';
 import type { ExtractedConcept } from './concept-extractor.js';
 import type { RedactorConfig } from './redactor.js';
@@ -304,6 +305,7 @@ export interface PluginConfig {
   checkpoint: CheckpointConfig;
   // Phase 5 — Context compiler (input token governor)
   contextCompiler: ContextCompilerConfig;
+  contextGovernor?: GovernorConfig;
   contextCache: ContextCacheConfig;
   // Phase 6 — Context rollover (cumulative token tracker + soft rollover)
   contextRollover: RolloverConfig;

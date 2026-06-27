@@ -21,7 +21,6 @@ interface DocUpdatePlan {
 const DOCS_DIR = "docs";
 
 const IGNORED_PATHS = [
-  "docs/",
   "dist/",
   "node_modules/",
   "coverage/",
@@ -84,6 +83,21 @@ function removeExistingEntry(docContent: string, filePath: string): string {
 function detectModuleChanges(change: CodeChange): boolean {
   return change.filePath.startsWith("src/") &&
     (change.filePath.endsWith(".ts") || change.filePath.endsWith(".js"));
+}
+
+function isRootMarkdownDoc(change: CodeChange): boolean {
+  const baseName = change.filePath.split("/").pop() || "";
+  const importantRootDocs = [
+    "README.md",
+    "MANIFESTO.md",
+    "IMPLEMENTATION_AGENT_PROTOCOL.md",
+    "AGENT_BOOT_PROTOCOL.md",
+    "ARCHITECTURE.md",
+    "DECISIONS.md",
+    "RUNBOOK.md",
+    "CHANGELOG.md",
+  ];
+  return change.filePath === baseName && importantRootDocs.includes(baseName);
 }
 
 function detectConfigChanges(change: CodeChange): boolean {
@@ -215,6 +229,32 @@ async function analyzeChange(change: CodeChange): Promise<DocUpdatePlan> {
     }
   }
 
+  // Handle root-level protocol/manifesto/architecture docs
+  if (isRootMarkdownDoc(change)) {
+    const sectionMap: Record<string, string> = {
+      "MANIFESTO.md": "Manifesto",
+      "IMPLEMENTATION_AGENT_PROTOCOL.md": "Agent Protocols",
+      "AGENT_BOOT_PROTOCOL.md": "Agent Protocols",
+      "ARCHITECTURE.md": "Architecture",
+      "DECISIONS.md": "Architecture Decisions",
+      "RUNBOOK.md": "Runbook",
+      "CHANGELOG.md": "Changelog",
+    };
+    const section = sectionMap[filePath] || "Project Docs";
+    plan.agentMemory = {
+      action: changeType === "delete" ? "remove" : "add",
+      section,
+      content: `**${filePath}** (${date})\n${content.slice(0, 1000)}...`
+    };
+    if (filePath === "README.md") {
+      plan.runbook = {
+        action: changeType === "delete" ? "remove" : "add",
+        section: "Commands",
+        content: `**${filePath}** (${date})\n${content.slice(0, 500)}...`
+      };
+    }
+  }
+
   return plan;
 }
 
@@ -229,7 +269,10 @@ export function updateDocContent(
   }
   const marker = `## ${section}`;
   const insertIdx = docContent.indexOf(marker);
-  if (insertIdx === -1) return docContent;
+  if (insertIdx === -1) {
+    // Section doesn't exist, append at end with new section header
+    return docContent.trimEnd() + `\n\n## ${section}\n${entry}\n`;
+  }
   const nextSection = docContent.indexOf("\n##", insertIdx + marker.length);
   const insertPoint = nextSection !== -1 ? nextSection : docContent.length;
   return docContent.slice(0, insertPoint) + `\n${entry}\n` + docContent.slice(insertPoint);

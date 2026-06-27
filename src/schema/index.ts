@@ -11,10 +11,12 @@ import { initializeSelfContinuitySchema } from '../self-continuity-schema.js';
 import { initializeCoreSchema } from './core-schema.js';
 import { initializeMemorySchema } from './memory-schema.js';
 import { migrateProjectIsolation } from './project-isolation-schema.js';
+import { isOwnershipLimitedSchemaError } from './schema-errors.js';
 import { initializeSessionSchema } from './session-schema.js';
 
 export async function initializeAllSchemas(database: Database): Promise<void> {
   const pool = database.getPool();
+  const ownershipLimitedSteps: string[] = [];
 
   const steps: Array<[string, () => Promise<void>]> = [
     ['extension.vector', () => pool.query('CREATE EXTENSION IF NOT EXISTS vector').then(() => undefined)],
@@ -37,7 +39,17 @@ export async function initializeAllSchemas(database: Database): Promise<void> {
     try {
       await step();
     } catch (error) {
+      if (isOwnershipLimitedSchemaError(error)) {
+        ownershipLimitedSteps.push(name);
+        continue;
+      }
       console.error(`[Database] Schema step failed (${name}); continuing:`, error);
     }
+  }
+
+  if (ownershipLimitedSteps.length > 0) {
+    console.log(
+      `[Database] Schema steps skipped due to ownership limits: ${ownershipLimitedSteps.join(', ')}`,
+    );
   }
 }

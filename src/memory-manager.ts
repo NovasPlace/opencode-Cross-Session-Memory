@@ -45,27 +45,22 @@ export class MemoryManager {
   async createSession(sessionId: string, projectPath: string): Promise<Session> {
     const pool = this.database.getPool();
     
-    // Check if session already exists
-    const existing = await pool.query(
-      'SELECT * FROM sessions WHERE id = $1',
-      [sessionId]
-    );
-
-    if (existing.rows.length > 0) {
-      return this.mapSession(existing.rows[0] as Record<string, unknown>);
-    }
-
-    // Insert new session
     const result = await pool.query(
       `INSERT INTO sessions (id, directory, title, project_id)
        VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id) DO UPDATE
+       SET directory = EXCLUDED.directory,
+           project_id = EXCLUDED.project_id,
+           updated_at = now()
        RETURNING *`,
       [sessionId, projectPath, `Session ${new Date().toISOString()}`, projectPath]
     );
 
     const row = result.rows[0] as Record<string, unknown>;
     
-    await this.emitEvent('session.created', { sessionId: row.id });
+    if ((row.created_at as Date).getTime() === (row.updated_at as Date).getTime()) {
+      await this.emitEvent('session.created', { sessionId: row.id });
+    }
 
     return this.mapSession(row);
   }

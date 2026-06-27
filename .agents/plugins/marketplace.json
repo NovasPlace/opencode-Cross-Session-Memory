@@ -1,0 +1,20 @@
+{
+  "name": "cross-session-memory-local",
+  "interface": {
+    "displayName": "Cross Session Memory Local"
+  },
+  "plugins": [
+    {
+      "name": "cross-session-memory-bridge",
+      "source": {
+        "source": "local",
+        "path": "./plugins/cross-session-memory-bridge"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

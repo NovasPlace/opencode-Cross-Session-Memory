@@ -20,6 +20,7 @@ import { ToolCallDistiller } from './tool-distiller.js';
 import { ContextCompactor } from './context-compactor.js';
 import { compactAssistantText, type AssistantCompactionResult } from './assistant-text-compactor.js';
 import { compileContext, type CompileResult } from './context-compiler.js';
+import { AdaptiveContextGovernor } from './context-governor.js';
 import { contextReviewTool } from './context-review-tool.js';
 import { logCompilation } from './context-compilation-log.js';
 import { contextFetchTool, contextSearchTool, contextFetchFileRegionTool, contextFetchLastErrorTool, contextFetchDecisionLogTool } from './context-cache-tools.js';
@@ -95,6 +96,10 @@ export default async (
   );
   const toolDistiller = new ToolCallDistiller(config.distiller);
   const contextCompactor = new ContextCompactor(config.compactor);
+  const contextGovernor = new AdaptiveContextGovernor(
+    config.contextCompiler,
+    config.contextGovernor,
+  );
 
   let currentSessionId: string | null = null;
   let messageCount = 0;
@@ -502,15 +507,23 @@ export default async (
         // ── Layer 5: Context compiler — input token governor ──
         let compileResult: CompileResult | null = null;
         if (config.contextCompiler?.enabled) {
-          compileResult = compileContext(
+          const governorResult = contextGovernor.govern(
             output.messages as { info?: { role?: string }; parts?: any[] }[],
-            config.contextCompiler,
           );
+          compileResult = governorResult.compileResult
+            ? governorResult.compileResult
+            : compileContext(
+              output.messages as { info?: { role?: string }; parts?: any[] }[],
+              config.contextCompiler,
+            );
           if (compileResult.partsCompressed > 0) {
             console.log(
               `[CrossSessionMemory] Context compiler: ${compileResult.partsCompressed} parts compressed, ${compileResult.beforeTokens} -> ${compileResult.afterTokens} tokens (budget: ${compileResult.budget}, mode: ${compileResult.mode})`,
             );
           }
+          console.log(
+            `[ContextGovernor] profile=${governorResult.decision.profile} action=${governorResult.decision.action} projected=${governorResult.decision.projectedNextTurnTokens} before=${governorResult.metricsBefore.totalTokens} after=${governorResult.metricsAfter.totalTokens}`,
+          );
           // Store for status line injection (Layer 1)
           pluginCtx.lastCompileResult = compileResult;
           // Log to DB (Layer 3) — fire and forget, never block the transform
