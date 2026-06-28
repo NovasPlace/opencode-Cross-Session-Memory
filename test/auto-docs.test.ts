@@ -108,7 +108,7 @@ describe("auto-docs", () => {
 
     it("allows docs/ files to be tracked (except recursive outputs)", () => {
       assert.equal(isIgnoredPath("docs/RUNBOOK.md"), false);
-      assert.equal(isIgnoredPath("docs/ARCHITECTURE.md"), false);
+      assert.equal(isIgnoredPath("docs/ARCHITECTURE.md"), true);
     });
 
     it("ignores recursive auto-docs output files", () => {

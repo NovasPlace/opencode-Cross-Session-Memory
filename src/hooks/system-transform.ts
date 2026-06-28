@@ -215,9 +215,9 @@ VERDICT: ${dbStatus === 'connected'
 
       // --- Token pressure info ---
       const pressureInfo = ctx.contextPressure.getInfo();
-      if (pressureInfo.pressure > 0.65) {
-        output.system.push(`[CONTEXT PRESSURE: ${pressureInfo.percentage}% used. Consider compacting.]`);
-      }
+      output.system.push(
+        `[CONTEXT WINDOW: ${pressureInfo.estimatedTokens}/${pressureInfo.maxTokens} tokens (${pressureInfo.percentage}%). Action: ${pressureInfo.action}]`,
+      );
 
       // --- Phase 4A: Inject latest active checkpoint ---
       if (input.sessionID && ctx.checkpointInjectDeps) {

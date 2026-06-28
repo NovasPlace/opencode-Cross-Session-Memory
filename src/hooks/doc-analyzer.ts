@@ -1,6 +1,7 @@
 import { PluginContext } from "../plugin-context.js";
 import { promises as fs } from "fs";
 import { join, normalize, sep } from "path";
+import { reconcileArchitectureDoc } from "./architecture-doc.js";
 
 interface CodeChange {
   filePath: string;
@@ -543,6 +544,7 @@ export {
 export async function initializeDocsForProject(projectDir: string): Promise<void> {
   const docsDir = join(projectDir, DOCS_DIR);
   await fs.mkdir(docsDir, { recursive: true });
+  await reconcileArchitectureDoc(docsDir, projectDir);
 
   const systemMapPath = join(docsDir, "SYSTEM_MAP.md");
   try {

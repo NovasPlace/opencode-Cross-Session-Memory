@@ -7,11 +7,11 @@ const SEARCH_MODES: MemorySearchMode[] = ['project', 'legacy', 'global'];
 const SORT_OPTIONS: SortBy[] = ['recent', 'important', 'accessed'];
 
 export const VAULT_TOOL_SPECS = [
-  toolSpec('preview_teacher_traces', 'Preview repair cards derived from a work journal trace.', { sessionId: { type: 'string', description: 'Session id to inspect.' }, projectRoot: { type: 'string', description: 'Project root or identifier.' }, limit: { type: 'number', description: 'Max journal entries to inspect.', default: 50 } }, ['sessionId']),
-  toolSpec('seed_teacher_traces', 'Derive and save teacher-trace repair cards from a work journal trace.', { sessionId: { type: 'string', description: 'Session id to inspect.' }, projectRoot: { type: 'string', description: 'Project root or identifier.' }, limit: { type: 'number', description: 'Max journal entries to inspect.', default: 50 } }, ['sessionId']),
-  toolSpec('capture_trace_vault', 'Capture a raw journal trace into a persisted vault record.', { sessionId: { type: 'string', description: 'Session id to inspect.' }, projectRoot: { type: 'string', description: 'Project root or identifier.' }, sourceLabel: { type: 'string', description: 'Label for the captured trace.', default: 'work_journal' } }, ['sessionId']),
-  toolSpec('preview_trace_vault', 'Preview persisted trace vault entries for a session.', { sessionId: { type: 'string', description: 'Session id to inspect.' }, projectRoot: { type: 'string', description: 'Project root or identifier.' }, limit: { type: 'number', description: 'Max vault entries to return.', default: 5 } }, ['sessionId']),
-  toolSpec('seed_teacher_traces_from_vault', 'Seed teacher traces from a persisted vault record.', { sessionId: { type: 'string', description: 'Session id to inspect.' }, projectRoot: { type: 'string', description: 'Project root or identifier.' }, limit: { type: 'number', description: 'Max vault entries to use.', default: 5 } }, ['sessionId']),
+  toolSpec('preview_teacher_traces', 'Preview repair cards derived from a work journal trace.', { sessionId: { type: 'string', description: 'Session id to inspect.' }, projectRoot: { type: 'string', description: 'Project root or identifier.' }, limit: { type: 'number', description: 'Max journal entries to inspect.', default: 50 } }, ['sessionId'], hints(true, false, false)),
+  toolSpec('seed_teacher_traces', 'Derive and save teacher-trace repair cards from a work journal trace.', { sessionId: { type: 'string', description: 'Session id to inspect.' }, projectRoot: { type: 'string', description: 'Project root or identifier.' }, limit: { type: 'number', description: 'Max journal entries to inspect.', default: 50 } }, ['sessionId'], hints(false, false, false)),
+  toolSpec('capture_trace_vault', 'Capture a raw journal trace into a persisted vault record.', { sessionId: { type: 'string', description: 'Session id to inspect.' }, projectRoot: { type: 'string', description: 'Project root or identifier.' }, sourceLabel: { type: 'string', description: 'Label for the captured trace.', default: 'work_journal' } }, ['sessionId'], hints(false, false, false)),
+  toolSpec('preview_trace_vault', 'Preview persisted trace vault entries for a session.', { sessionId: { type: 'string', description: 'Session id to inspect.' }, projectRoot: { type: 'string', description: 'Project root or identifier.' }, limit: { type: 'number', description: 'Max vault entries to return.', default: 5 } }, ['sessionId'], hints(true, false, false)),
+  toolSpec('seed_teacher_traces_from_vault', 'Seed teacher traces from a persisted vault record.', { sessionId: { type: 'string', description: 'Session id to inspect.' }, projectRoot: { type: 'string', description: 'Project root or identifier.' }, limit: { type: 'number', description: 'Max vault entries to use.', default: 5 } }, ['sessionId'], hints(false, false, false)),
 ];
 
 export function teacherTraceArgs(args: ToolArgs) {
@@ -26,8 +26,18 @@ export function traceVaultPreviewArgs(args: ToolArgs) {
   return { sessionId: requiredString(args.sessionId, 'sessionId'), projectRoot: defaultProject(args.projectRoot), limit: optionalNumber(args.limit) ?? 5 };
 }
 
-function toolSpec(name: string, description: string, properties: Record<string, unknown>, required: string[] = []) {
-  return { name, title: name, description, inputSchema: { type: 'object', properties, required } };
+function toolSpec(name: string, description: string, properties: Record<string, unknown>, required: string[] = [], annotations: ToolAnnotations = hints(true, false, false)) {
+  return { name, title: name, description, annotations, inputSchema: { type: 'object', properties, required } };
+}
+
+function hints(readOnlyHint: boolean, openWorldHint: boolean, destructiveHint: boolean): ToolAnnotations {
+  return { readOnlyHint, openWorldHint, destructiveHint };
+}
+
+export interface ToolAnnotations {
+  readOnlyHint: boolean;
+  openWorldHint: boolean;
+  destructiveHint: boolean;
 }
 
 function requiredString(value: unknown, name: string): string {

@@ -1,6 +1,7 @@
 import { CodexMemoryBridge } from './codex-bridge.js';
 import type { MemoryListOptions, MemorySaveOptions, MemorySearchMode, MemorySearchOptions, MemoryType, SortBy } from './types.js';
 import { VAULT_TOOL_SPECS, teacherTraceArgs, traceVaultArgs, traceVaultPreviewArgs } from './codex-mcp-vault-tools.js';
+import { EXTRA_MCP_TOOLS } from './codex-mcp-extra-tools.js';
 
 type ToolArgs = Record<string, unknown>;
 
@@ -16,14 +17,14 @@ export const MCP_TOOLS = [
     sessionId: { type: 'string', description: 'Optional bridge session id.' },
     tags: { type: 'array', items: { type: 'string' }, description: 'Optional memory tags.' },
     importance: { type: 'number', description: 'Optional importance score from 0 to 1.' },
-  }, ['content', 'type']),
+  }, ['content', 'type'], hints(false, false, false)),
   toolSpec('search_memories', 'Search memories with bridge fallback behavior.', {
     query: { type: 'string', description: 'Search query.' },
     projectId: { type: 'string', description: 'Project id or root to search within.' },
     sessionId: { type: 'string', description: 'Optional bridge session id.' },
     limit: { type: 'number', description: 'Max result count.', default: 5 },
     searchMode: { type: 'string', enum: SEARCH_MODES, description: 'Search scope strategy.' },
-  }, ['query']),
+  }, ['query'], hints(true, false, false)),
   toolSpec('list_memories', 'List recent or important memories for a project.', {
     projectId: { type: 'string', description: 'Project id or root to list from.' },
     sessionId: { type: 'string', description: 'Optional bridge session id.' },
@@ -31,24 +32,24 @@ export const MCP_TOOLS = [
     type: { type: 'string', enum: MEMORY_TYPES, description: 'Filter by memory type.' },
     sortBy: { type: 'string', enum: SORT_OPTIONS, description: 'Sort order.' },
     searchMode: { type: 'string', enum: SEARCH_MODES, description: 'Project, legacy, or global.' },
-  }),
+  }, [], hints(true, false, false)),
   toolSpec('get_context_brief', 'Build a compact context brief for a task.', {
     task: { type: 'string', description: 'Task to prime for.' },
     projectRoot: { type: 'string', description: 'Project root or identifier.' },
     sessionId: { type: 'string', description: 'Optional bridge session id.' },
-  }, ['task']),
+  }, ['task'], hints(true, false, false)),
   toolSpec('recall_lessons', 'Recall lesson and procedural memories for a task.', {
     task: { type: 'string', description: 'Task to search against.' },
     projectRoot: { type: 'string', description: 'Project root or identifier.' },
     sessionId: { type: 'string', description: 'Optional bridge session id.' },
     limit: { type: 'number', description: 'Max lesson count.', default: 5 },
-  }, ['task']),
+  }, ['task'], hints(true, false, false)),
   toolSpec('bridge_resume_context', 'Resume the bridge workflow with context brief plus recent memory.', {
     task: { type: 'string', description: 'Task being resumed.' },
     projectRoot: { type: 'string', description: 'Project root or identifier.' },
     sessionId: { type: 'string', description: 'Optional bridge session id.' },
     recentLimit: { type: 'number', description: 'Recent memory rows to include.', default: 5 },
-  }, ['task']),
+  }, ['task'], hints(false, false, false)),
   toolSpec('bridge_sync_turn', 'Mirror a Codex turn into long-term memory and emit a bridge event.', {
     role: { type: 'string', enum: ['user', 'assistant', 'system'], description: 'Turn role.' },
     content: { type: 'string', description: 'Turn content to mirror.' },
@@ -56,23 +57,24 @@ export const MCP_TOOLS = [
     sessionId: { type: 'string', description: 'Optional bridge session id.' },
     tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags.' },
     memoryType: { type: 'string', enum: MEMORY_TYPES, description: 'Override stored memory type.' },
-  }, ['role', 'content']),
+  }, ['role', 'content'], hints(false, false, false)),
   toolSpec('bridge_handoff_summary', 'Build a handoff summary for the current bridge session.', {
     task: { type: 'string', description: 'Current or next task label.' },
     projectRoot: { type: 'string', description: 'Project root or identifier.' },
     sessionId: { type: 'string', description: 'Optional bridge session id.' },
     recentLimit: { type: 'number', description: 'Recent memory rows to include.', default: 5 },
-  }),
-  toolSpec('prune_memories_dry_run', 'Preview prune candidates without mutating data.', {}),
+  }, [], hints(true, false, false)),
+  toolSpec('prune_memories_dry_run', 'Preview prune candidates without mutating data.', {}, [], hints(true, false, false)),
   toolSpec('backfill_missing_embeddings', 'Repair missing embeddings on demand.', {
     limit: { type: 'number', description: 'Max rows to scan.', default: 25 },
     projectId: { type: 'string', description: 'Optional project filter.' },
     dryRun: { type: 'boolean', description: 'Preview only without writing embeddings.' },
-  }, ['limit']),
+  }, ['limit'], hints(false, false, false)),
   toolSpec('get_compaction_report', 'Fetch the latest compaction metric for a session.', {
     sessionId: { type: 'string', description: 'Optional session id.' },
-  }),
+  }, [], hints(true, false, false)),
   ...VAULT_TOOL_SPECS,
+  ...EXTRA_MCP_TOOLS,
 ];
 
 export async function invokeMcpTool(bridge: CodexMemoryBridge, name: string, args: ToolArgs) {
@@ -92,11 +94,27 @@ export async function invokeMcpTool(bridge: CodexMemoryBridge, name: string, arg
   if (name === 'capture_trace_vault') return bridge.captureTraceVault(traceVaultArgs(args));
   if (name === 'preview_trace_vault') return bridge.previewTraceVault(traceVaultPreviewArgs(args));
   if (name === 'seed_teacher_traces_from_vault') return bridge.seedTeacherTracesFromVault(traceVaultPreviewArgs(args));
-  throw new Error(`Unknown tool: ${name}`);
+  return bridge.invokeExtra(name as never, args);
 }
 
-function toolSpec(name: string, description: string, properties: Record<string, unknown>, required: string[] = []) {
-  return { name, title: name, description, inputSchema: { type: 'object', properties, required } };
+function toolSpec(
+  name: string,
+  description: string,
+  properties: Record<string, unknown>,
+  required: string[] = [],
+  annotations: ToolAnnotations = hints(true, false, false),
+) {
+  return { name, title: name, description, annotations, inputSchema: { type: 'object', properties, required } };
+}
+
+function hints(readOnlyHint: boolean, openWorldHint: boolean, destructiveHint: boolean): ToolAnnotations {
+  return { readOnlyHint, openWorldHint, destructiveHint };
+}
+
+export interface ToolAnnotations {
+  readOnlyHint: boolean;
+  openWorldHint: boolean;
+  destructiveHint: boolean;
 }
 
 function buildSaveInput(args: ToolArgs): MemorySaveOptions & { projectRoot?: string; sessionId?: string } {

@@ -1,7 +1,7 @@
 {
   "name": "cross-session-memory-bridge",
-  "version": "1.0.0",
-  "description": "Codex plugin wrapper for the cross-session memory bridge.",
+  "version": "1.1.0",
+  "description": "Repo-local Codex plugin wrapper for the cross-session memory bridge.",
   "author": {
     "name": "Donovan"
   },
@@ -16,7 +16,7 @@
   "interface": {
     "displayName": "Cross-Session Memory Bridge",
     "shortDescription": "Reuse cross-session memory from Codex.",
-    "longDescription": "Exposes the existing Postgres-backed cross-session memory bridge as Codex MCP tools for search, recall, context briefs, and maintenance.",
+    "longDescription": "Postgres-backed memory, compaction, checkpointing, and context briefs that keep long coding sessions coherent while reducing token spend.",
     "developerName": "Donovan",
     "category": "Productivity",
     "capabilities": [
@@ -27,7 +27,7 @@
     "defaultPrompt": [
       "Search project memory before we start changing code.",
       "Build a context brief for this task from prior sessions.",
-      "Save an important lesson from this session."
+      "Show the current context pressure before we continue."
     ],
     "brandColor": "#2563EB"
   }

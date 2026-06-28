@@ -4,6 +4,8 @@ import { ContextRecallDaemon } from './context-recall.js';
 import { Database } from './database.js';
 import { EmbeddingGenerator } from './embeddings.js';
 import { DEFAULT_CONFIG } from './config.js';
+import { CheckpointStore } from './checkpoint-store.js';
+import { MemoryExtractor } from './memory-extractor.js';
 import { MemoryManager } from './memory-manager.js';
 import { PrimingEngine } from './priming-engine.js';
 import { Redactor } from './redactor.js';
@@ -32,14 +34,15 @@ import {
   type ResumeContextPayload,
   type SyncTurnPayload,
 } from './codex-bridge-workflow.js';
+import { EXTRA_BRIDGE_TOOL_NAMES, invokeCodexBridgeExtra, type CodexBridgeExtraDeps } from './codex-bridge-extra-ops.js';
 import type { Memory, MemoryListOptions, MemorySaveOptions, MemorySearchOptions, PluginConfig, PruneReport } from './types.js';
 
 export class CodexMemoryBridge {
-  private readonly deps: BridgeDeps;
+  private readonly deps: BridgeDeps & CodexBridgeExtraDeps;
 
   private constructor(
     private readonly config: PluginConfig,
-    deps: BridgeDeps,
+    deps: BridgeDeps & CodexBridgeExtraDeps,
   ) {
     this.deps = deps;
   }
@@ -50,12 +53,17 @@ export class CodexMemoryBridge {
     await database.connect();
     const redactor = new Redactor(merged.redactor);
     const embeddings = new EmbeddingGenerator(merged);
+    const memoryManager = new MemoryManager(database, embeddings, redactor);
     return new CodexMemoryBridge(merged, {
       database,
-      memoryManager: new MemoryManager(database, embeddings, redactor),
+      memoryManager,
       contextRecall: new ContextRecallDaemon(database, merged.contextRecallInterval),
       primingEngine: new PrimingEngine(database),
       contextCompactor: new ContextCompactor(merged.compactor),
+      memoryExtractor: new MemoryExtractor(database, memoryManager, merged.extractor),
+      checkpointStore: new CheckpointStore(database.getPool(), redactor),
+      checkpointConfig: merged.checkpoint,
+      distillerConfig: merged.distiller,
     });
   }
 
@@ -153,26 +161,9 @@ export class CodexMemoryBridge {
     });
   }
 
-  listTools(): string[] {
-    return [
-      'save_memory',
-      'search_memories',
-      'list_memories',
-      'get_context_brief',
-      'recall_lessons',
-      'bridge_resume_context',
-      'bridge_sync_turn',
-      'bridge_handoff_summary',
-      'prune_memories_dry_run',
-      'backfill_missing_embeddings',
-      'get_compaction_report',
-      'preview_teacher_traces',
-      'seed_teacher_traces',
-      'capture_trace_vault',
-      'preview_trace_vault',
-      'seed_teacher_traces_from_vault',
-    ];
-  }
+  async invokeExtra(name: string, input: Record<string, unknown>): Promise<unknown> { const sessionless = new Set(['memory_project_list', 'memory_cleanup', 'csm_runtime_status', 'csm_compaction_audit']); const sessionId = sessionless.has(name) ? undefined : await this.ensureSession(input.projectRoot as string | undefined, input.sessionId as string | undefined); return invokeCodexBridgeExtra(this.deps, name as never, input, sessionId); }
+
+  listTools(): string[] { return ['save_memory', 'search_memories', 'list_memories', 'get_context_brief', 'recall_lessons', 'bridge_resume_context', 'bridge_sync_turn', 'bridge_handoff_summary', 'prune_memories_dry_run', 'backfill_missing_embeddings', 'get_compaction_report', 'preview_teacher_traces', 'seed_teacher_traces', 'capture_trace_vault', 'preview_trace_vault', 'seed_teacher_traces_from_vault', ...EXTRA_BRIDGE_TOOL_NAMES]; }
 
   getDatabaseUrl(): string {
     return this.config.databaseUrl;
@@ -184,6 +175,7 @@ export class CodexMemoryBridge {
     const resolvedSession = sessionId ?? this.defaultSessionId(resolvedProject);
     await this.deps.memoryManager.createSession(resolvedSession, resolvedProject);
     this.deps.contextRecall.setSession(resolvedSession, resolvedProject);
+    await this.deps.memoryManager.upsertProjectScope(resolvedProject, resolvedProject, resolvedProject);
     return resolvedSession;
   }
 
