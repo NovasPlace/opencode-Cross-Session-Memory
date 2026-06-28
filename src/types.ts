@@ -6,6 +6,7 @@ import type { GovernorConfig } from './context-governor-types.js';
 import type { RolloverConfig } from './context-rollover-config.js';
 import type { ExtractedConcept } from './concept-extractor.js';
 import type { RedactorConfig } from './redactor.js';
+import type { WorkJournalConfig } from './work-journal-types.js';
 
 export type MemoryType =
   | 'conversation'    // Key decisions, problems solved, user preferences
@@ -316,6 +317,8 @@ export interface PluginConfig {
   redactor: RedactorConfig;
   // Phase 21 — Self-continuity records
   selfContinuity: SelfContinuityConfig;
+  // Agent work journal — live incremental capture of agent's work state
+  workJournal: WorkJournalConfig;
 }
 
 export interface CompactorConfig {
