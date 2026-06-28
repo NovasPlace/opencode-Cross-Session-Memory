@@ -69,15 +69,16 @@ npx tsx test/benchmark-context-governor-trace.ts
 ```
 
 Replay subsection result:
-- workspace trace snapshots: `240`
-- workspace trace tokens: `966,758`
+- workspace trace snapshots: `532`
+- workspace trace tokens: `1,493,782`
 - workspace trace peak: `8,110`
-- replayed governor tokens: `857,170`
-- replay reduction: `11.3%`
+- replayed governor tokens: `1,384,194`
+- replay reduction: `7.3%`
 
 Why this matters:
 - earlier replay evidence was `0.0%`
 - current replay evidence shows the governor affects a real messy workspace trace, not only synthetic or generated captured traces
+- the live rerun is the number to trust for the current workspace state
 
 ## Mechanisms Included
 

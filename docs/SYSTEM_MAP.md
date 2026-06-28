@@ -6,19 +6,32 @@
 
 | File | Exports | Type | Role |
 |------|---------|------|------|
+| `src/hooks/architecture-doc-render.ts` | renderArchitectureDoc | src | Hook handler |
+| `src/hooks/architecture-doc-graph.ts` | GraphNode, buildGraph | src | Hook handler |
+| `test/architecture-doc.test.ts` | buildThing, value, entry | test | Test suite |
+| `src/hooks/architecture-doc.ts` | reconcileArchitectureDoc | src | Hook handler |
+| `src/work-journal-types.ts` | WorkJournalEntryType, WorkJournalEntry, WorkJournalConfig, ResumePayload, ResumeEntry, isMilestoneIntent, isErrorResult, inferNextStep, collectAllFiles | src | Module |
+| `src/work-journal-schema.ts` | initializeWorkJournalSchema | src | SQL schema |
+| `src/work-journal-inject.ts` | WorkJournalInjectDeps, buildResumeInjection | src | Module |
+| `src/lesson-trigger-cache.ts` | LessonTrigger, LessonTriggerCache | src | Module |
+| `src/hooks/work-journal-inject.ts` | createWorkJournalInjectHook | src | Hook handler |
+| `src/hooks/tool-execute-work-journal.ts` | createToolExecuteAfterWorkJournalHook | src | Hook handler |
+| `src/compaction-telemetry-audit.ts` | AuditResult, AuditAnomaly, SessionBreakdown, auditCompactionTelemetry, formatAuditReport | src | Context compaction engine |
+| `src/codex-mcp-vault-tools.ts` | VAULT_TOOL_SPECS, teacherTraceArgs, traceVaultArgs, traceVaultPreviewArgs, ToolAnnotations | src | Tool registration |
+| `src/agent-work-journal.ts` | AgentWorkJournal | src | Module |
 | `test/phase32-trace-benchmark.test.ts` | none | test | Test suite |
 | `test/phase32-docs-continuity.test.ts` | none | test | Test suite |
 | `test/benchmark-context-governor-trace.ts` | none | test | Test suite |
 | `test/phase33-teacher-trace.test.ts` | none | test | Test suite |
-| `test/phase33-teacher-trace-benchmark.ts` | none | test | Benchmark script |
+| `test/phase33-teacher-trace-benchmark.ts` | none | test | Test suite |
 | `src/context-governor-trace.ts` | TraceBenchmarkReport, TraceSessionMetrics, CapturedTraceBenchmarkReport, measureTraceSession, compareTraceSessions, runTraceBenchmark | src | Module |
 | `src/context-governor-trace-capture.ts` | captureTraceSession | src | Module |
-| `src/teacher-trace.ts` | TeacherTraceCard, TeacherTraceSeedInput, TeacherTraceSeedResult, deriveTeacherTraceCards, formatTeacherTraceCards, previewTeacherTraces, seedTeacherTraces | src | Module |
+| `src/teacher-trace.ts` | none | src | Module |
 | `src/teacher-trace-core.ts` | deriveTeacherTraceCards, formatTeacherTraceCards, summarizeTeacherTraceSeed | src | Module |
 | `src/teacher-trace-seeder.ts` | previewTeacherTraces, seedTeacherTraces | src | Module |
 | `src/teacher-trace-ops.ts` | previewTeacherTracesOp, seedTeacherTracesOp | src | Module |
 | `src/teacher-trace-types.ts` | TeacherTraceCard, TeacherTraceSeedInput, TeacherTraceSeedResult | src | Module |
-| `src/trace-vault.ts` | TraceVaultCaptureInput, TraceVaultCaptureResult, buildTraceVaultCapture, captureTraceVault, loadTraceVaultEntries, seedTeacherTracesFromVault | src | Module |
+| `src/trace-vault.ts` | none | src | Module |
 | `src/trace-vault-core.ts` | buildTraceVaultCapture, formatTraceVaultCapture | src | Module |
 | `src/trace-vault-ops.ts` | captureTraceVaultOp, previewTraceVaultOp, seedTeacherTracesFromVaultOp | src | Module |
 | `src/trace-vault-store.ts` | initializeTraceVaultSchema, captureTraceVault, loadTraceVaultEntries, seedTeacherTracesFromVault, formatTraceVaultForInjection | src | Module |
@@ -2383,15 +2396,20 @@
 | `src/context-governor-checkpoint.ts` | buildCheckpointRefSummary, buildCheckpointDistilledState | src | Module |
 | `src/context-governor-benchmark.ts` | SessionRunMetrics, GovernorBenchmarkReport, runGovernorBenchmark | src | Module |
 | `src/context-governor-benchmark-fixtures.ts` | BenchmarkMessage, ScenarioFacts, clone, countTokens, toolShare, buildScenario, evaluateContinuity | src | Module |
-| `src/codex-mcp-tools.ts` | MCP_TOOLS, invokeMcpTool | src | Tool registration |
+| `src/codex-bridge-extra-utils.ts` | requireSession, requireString, asString, asNumber, asLimit, asStringArray, asRecord, asMessages | src | Module |
+| `src/codex-bridge-extra-memory-ops.ts` | memoryTranscriptOp, memoryDeleteOp, memoryContextOp, memoryLessonOp, memoryProjectListOp, memoryCleanupOp, memoryBackfillOp, memoryDistilledViewOp, memoryCompactOp, memoryDistillOp, reviewCandidateOp | src | Module |
+| `src/codex-bridge-extra-state-ops.ts` | contextFetchOp, contextSearchOp, contextFetchFileRegionOp, contextFetchLastErrorOp, contextFetchDecisionLogOp, goalSetOp, goalUpdateOp, goalListOp, createCheckpointOp, listCheckpointsOp, expandCheckpointRefOp, contextReviewOp, contextPressureOp, runtimeStatusOp, compactionAuditOp | src | Module |
+| `src/codex-mcp-tools.ts` | MCP_TOOLS, invokeMcpTool, ToolAnnotations | src | Tool registration |
+| `src/codex-mcp-extra-tools.ts` | EXTRA_MCP_TOOLS, EXTRA_MCP_TOOL_NAMES, ToolAnnotations | src | Tool registration |
 | `src/codex-bridge-workflow.ts` | ResumeContextPayload, SyncTurnPayload, HandoffSummaryPayload, resumeContextOp, syncTurnOp, handoffSummaryOp | src | Module |
+| `src/codex-bridge-extra-ops.ts` | CodexBridgeExtraDeps, CodexBridgeExtraName, EXTRA_BRIDGE_TOOL_NAMES, invokeCodexBridgeExtra | src | Module |
 | `src/prompt-message-sanitizer.ts` | PromptMessageLike, PromptNormalizationOptions, normalizePromptMessages | src | Module |
 | `src/prompt-debug-log.ts` | writePromptDebugLog | src | Module |
 | `src/codex-mcp-server.ts` | none | src | Module |
 | `src/types.ts` | MemoryType, MemoryCandidateStatus, MemoryCandidate, MemoryApproval, TTLConfig, ProjectScope, ExtractorConfig, MemoryEmotion, MemorySource, SortBy, MemorySearchMode, Session, Memory, MemoryChunk, MemoryEvent, SessionContext, BudgetMode, ContextCompilerConfig, ContextCacheConfig, CompressedPartDetail, ContextCompilationEntry, ProviderPricing, CompactionReport, ToolDominanceTrendPoint, SessionAnalytics, AutoDocsConfig, PluginConfig, CompactorConfig, AssistantCompactorConfig, CompactionResult, CumulativeCompactionStats, CompactionQualityMetrics, CompactionQualityConfig, DEFAULT_COMPACTION_QUALITY_CONFIG, DistillerConfig, ToolCallRecord, ToolCallGroup, ToolCallSummary, ContextBrief, LoopDetectionResult, ContextPressureResult, RecallResult, MemorySaveOptions, MemorySearchOptions, MemoryListOptions, BackfillEmbeddingsOptions, BackfillEmbeddingsResult, DatabasePool, DatabaseClient, PruneRiskLevel, PruneSignal, PruneCandidate, PruneReport, PruneConfig, AlchemistLessonType, AlchemistSource, AlchemistIngest, ExtractedCapability, LessonTelemetry, AlchemistLesson, Blueprint, GapReport, AlchemistConfig, SelfContinuityConfidenceWeights, SelfContinuityConfig, DEFAULT_PRUNE_CONFIG | src | Context compaction engine |
 | `src/types/opentui.d.ts` | createSignal, createEffect, onCleanup, createMemo, onMount, h, jsx, jsxs, Fragment, RGBA, Renderable, KeyEvent, SlotMode, CliRenderer, JSX, SolidPlugin, Binding, Keymap, KeyLike, KeySequencePart, KeyStringifyInput, StringifyOptions, stringifyKeySequence, stringifyKeyStroke, BindingConfig, BindingLookup, BindingValue, createBindingLookup, formatCommandBindings, formatKeySequence | src | Module |
 | `src/tui.ts` | none | src | Module |
-| `src/tools.ts` | memorySaveTool, memorySearchTool, memoryDeleteTool, memoryContextTool, memoryLessonTool, memoryListTool, memoryTranscriptTool, memoryCandidateListTool, memoryCandidateApproveTool, memoryCandidateRejectTool, memoryProjectListTool, memoryCleanupTool, memoryDistillTool, memoryDistilledViewTool, memoryCompactTool, runtimeStatusTool | src | Tool registration |
+| `src/tools.ts` | memorySaveTool, memorySearchTool, memoryDeleteTool, memoryContextTool, memoryLessonTool, memoryListTool, memoryTranscriptTool, memoryCandidateListTool, memoryCandidateApproveTool, memoryCandidateRejectTool, memoryProjectListTool, memoryCleanupTool, memoryDistillTool, memoryDistilledViewTool, memoryCompactTool, runtimeStatusTool, compactionAuditTool | src | Tool registration |
 | `src/tool-distiller.ts` | ToolCallDistiller | src | Tool registration |
 | `src/token-bucket-analyzer.ts` | BucketBreakdown, estimateTokens, estimatePartTokens, analyzeMessages, estimateSystemPrompt, formatBreakdown | src | Module |
 | `src/subconscious.ts` | FileChangeEvent, SubconsciousWatcher | src | Module |
@@ -2407,8 +2425,8 @@
 | `src/hooks/tool-execute.ts` | createToolExecuteBeforeHook, createToolExecuteAfterHook | src | Hook handler |
 | `src/hooks/system-transform.ts` | isGreetingLikeTurn, isWorkspaceFactTurn, createSystemTransformHook | src | Hook handler |
 | `src/hooks/session-compaction.ts` | createSessionCompactingHook, createAutocontinueHook | src | Hook handler |
-| `src/hooks/doc-analyzer.ts` | isIgnoredForAnalysis, isStubContent, updateDocContent, shouldSkipEntry, autoDocumentChange, reconcileSystemMap | src | Hook handler |
-| `src/hooks/auto-docs.ts` | DEFAULT_AUTO_DOCS_CONFIG, queueDocUpdate, isIgnoredPath, flushDocUpdates, clearPendingUpdates, getPendingUpdates, resetFlushedFlag | src | Hook handler |
+| `src/hooks/doc-analyzer.ts` | isIgnoredForAnalysis, isStubContent, updateDocContent, shouldSkipEntry, autoDocumentChange, reconcileSystemMap, initializeDocsForProject | src | Hook handler |
+| `src/hooks/auto-docs.ts` | DEFAULT_AUTO_DOCS_CONFIG, queueDocUpdate, isIgnoredPath, flushDocUpdates, clearPendingUpdates, getPendingUpdates, resetFlushedFlag, ensureProjectDocsInitialized, isProjectInitialized | src | Hook handler |
 | `src/helpers/compaction-metrics.ts` | recordCompactionMetric, hasToolDiscardMarker | src | Context compaction engine |
 | `src/helpers/auto-checkpoint.ts` | AutoCheckpointTrigger, AutoCheckpointContext, createAutoCheckpoint | src | Module |
 | `src/goal-tools.ts` | GoalToolDeps, goalSetTool, goalUpdateTool, goalListTool | src | Tool registration |
@@ -2438,6 +2456,7 @@
 | `src/checkpoint-store.ts` | CheckpointStore | src | Module |
 | `src/checkpoint-markdown.ts` | CheckpointSections, buildCheckpointMarkdown | src | Module |
 | `src/checkpoint-inject.ts` | CheckpointInjectDeps, buildCheckpointInjection | src | Module |
+| `test/codex-bridge-extra-tools.test.ts` | none | test | Tool registration |
 | `src/checkpoint-capture.ts` | collectRawCaptures, estimateInputTokens | src | Module |
 | `src/checkpoint-builder.ts` | BuildInput, BuildResult, buildCheckpoint | src | Module |
 | `src/bridge-ops.ts` | BridgeDeps, BridgeContext, ContextBriefPayload, CompactionReportPayload, saveMemoryOp, searchMemoriesOp, listMemoriesOp, recallLessonsOp, getContextBriefOp, pruneMemoriesDryRunOp, backfillMissingEmbeddingsOp, getCompactionReportOp | src | Context compaction engine |

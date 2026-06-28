@@ -52,12 +52,12 @@ captured_tool_share_governor=0.532
 captured_reduction_pct=63.9
 captured_continuity=true
 captured_build_state=failing error preserved
-workspace_trace_snapshots=240
-workspace_trace_tokens=966758
+workspace_trace_snapshots=532
+workspace_trace_tokens=1493782
 workspace_trace_peak=8110
-workspace_trace_pressure_turn=240
-workspace_replay_governor_tokens=857170
-workspace_replay_reduction_pct=11.3
+workspace_trace_pressure_turn=532
+workspace_replay_governor_tokens=1384194
+workspace_replay_reduction_pct=7.3
 ```
 
 ## Verification

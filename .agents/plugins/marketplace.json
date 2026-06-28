@@ -1,8 +1,5 @@
 {
   "name": "cross-session-memory-local",
-  "interface": {
-    "displayName": "Cross Session Memory Local"
-  },
   "plugins": [
     {
       "name": "cross-session-memory-bridge",
