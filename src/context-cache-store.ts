@@ -113,6 +113,34 @@ export async function fetchDecisions(
   return res.rows.map((r) => rowToItem(r as Record<string, unknown>));
 }
 
+export async function fetchLatestDecisionBySource(
+  pool: DatabasePool, sessionId: string, source: string,
+): Promise<CacheItem | null> {
+  const res = await pool.query(
+    `SELECT * FROM context_cache
+     WHERE session_id = $1 AND kind = 'decision' AND metadata->>'source' = $2
+     ORDER BY created_at DESC LIMIT 1`,
+    [sessionId, source],
+  );
+  if (res.rows.length === 0) return null;
+  return rowToItem(res.rows[0] as Record<string, unknown>);
+}
+
+export async function searchLatestDecisionBySources(
+  pool: DatabasePool, sessionId: string, query: string, sources: string[],
+): Promise<CacheItem | null> {
+  const pattern = `%${query.replace(/[%_]/g, '\\$&')}%`;
+  const res = await pool.query(
+    `SELECT * FROM context_cache
+     WHERE session_id = $1 AND kind = 'decision' AND metadata->>'source' = ANY($2)
+       AND (summary ILIKE $3 OR content ILIKE $3)
+     ORDER BY created_at DESC LIMIT 1`,
+    [sessionId, sources, pattern],
+  );
+  if (res.rows.length === 0) return null;
+  return rowToItem(res.rows[0] as Record<string, unknown>);
+}
+
 export async function countItems(pool: DatabasePool, sessionId: string): Promise<number> {
   const res = await pool.query(
     `SELECT COUNT(*)::int AS cnt FROM context_cache WHERE session_id = $1`,
