@@ -1,9 +1,3 @@
-I'd lean into the fact that this is **continuity infrastructure**, not "just memory." Here's a README opening that reflects that.
-
----
-
-# Continuity Engine
-
 **Continuity Engine** is an open-source continuity layer for AI systems.
 
 Instead of forcing an AI model to start over every conversation or repeatedly consume the same context, Continuity Engine gives it a persistent, structured understanding of its work. It captures what matters, remembers what should persist, and retrieves only the information needed for the current task.
